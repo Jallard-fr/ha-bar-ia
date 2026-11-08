@@ -176,3 +176,61 @@ def test_legacy_migration_formats():
         spirits,
     )
     assert plan == {"E1-1": "spirit_1", "E1-2": "spirit_1"}
+
+
+def test_tasting_grid_and_summary():
+    t = logic.make_tasting(
+        {"nez": 8, "bouche": "7,3", "finale": 9, "qualite_prix": None, "commentaire": "Vanillé"},
+        "t1",
+        "2026-11-01",
+    )
+    assert t["bouche"] == 7.5  # arrondi au demi-point
+    assert t["qualite_prix"] is None
+    assert t["globale"] == round((8 + 7.5 + 9) / 3, 1)
+    with pytest.raises(ValueError):
+        logic.make_tasting({"nez": 12}, "t2", "2026-11-01")
+
+    info = spirit("Alpha", "Rhum")
+    info["degustations"] = [t, {**t, "id": "t2", "date": "2026-11-05", "globale": 6, "commentaire": ""}]
+    summary = logic.tasting_summary(info)
+    assert summary["nb"] == 2 and summary["derniere"] == "2026-11-05"
+    assert summary["note"] == round((t["globale"] + 6) / 2, 1)
+
+
+def test_rated_spirits_by_category_and_prompts():
+    a = spirit("Alpha", "Rhum")
+    a["degustations"] = [logic.make_tasting({"nez": 9, "commentaire": "Superbe"}, "1", "2026-01-01")]
+    b = spirit("Beta", "Rhum")
+    b["degustations"] = [logic.make_tasting({"nez": 5}, "2", "2026-01-01")]
+    c = spirit("Gamma", "Gin")
+    c["degustations"] = [logic.make_tasting({"nez": 10}, "3", "2026-01-01")]
+    d = spirit("Delta", "Rhum")  # jamais dégustée
+    rated = logic.rated_spirits({"a": a, "b": b, "c": c, "d": d}, "rhum")
+    assert [r["nom"] for r in rated] == ["Alpha", "Beta"]
+    assert rated[0]["commentaires"] == ["Superbe"]
+
+    prompt = logic.prompt_taste_profile("rhum", rated)
+    assert "Superbe" in prompt and "Gamma" not in prompt
+
+    achat = logic.prompt_purchase("Nouveau", "Rhum", 40, 50, {"a": a, "c": c}, {"aime": ["Jamaïque"]})
+    assert "mes_degustations" in achat and "Alpha" in achat and "Jamaïque" in achat
+    assert '"nom": "Gamma"' not in achat.split("mes_degustations")[1]
+    assert logic.normalize_purchase({"adequation_gouts": "Colle à vos goûts"})["adequation_gouts"]
+
+
+def test_apply_edit_keeps_extras_and_marks_manual():
+    info = spirit("Alpha", "Rhum", prix="30")
+    info["prix_moyen"] = {"valeur": "30", "sources": "IA", "confiance": "moyenne"}
+    changed = logic.apply_edit(info, {"prix_moyen": "42,5", "origine": "Guadeloupe", "nom": "Alpha", "inconnu": "x"})
+    assert sorted(changed) == ["origine", "prix_moyen"]
+    assert info["prix_moyen"] == {"valeur": "42,5", "sources": "IA", "confiance": "manuelle"}
+    assert logic.price(info) == 42.5
+    assert "inconnu" not in info
+    with pytest.raises(ValueError):
+        logic.apply_edit(info, {"nom": "  "})
+
+
+def test_search_prompt_and_maison_with_country():
+    assert '"pays_origine": "Guadeloupe"' in logic.prompt_search("X", "Rhum", "", "Guadeloupe")
+    m = logic.compute_maison({})
+    assert logic.build_maison_payload("X", "Rhum", "", m, "Martinique")["origine"]["valeur"] == "Maison (Martinique)"

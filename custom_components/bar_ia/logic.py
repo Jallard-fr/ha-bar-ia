@@ -409,7 +409,7 @@ def compute_maison(params: dict) -> dict:
     }
 
 
-def build_maison_payload(nom: str, typ: str, annee: str, maison: dict) -> dict:
+def build_maison_payload(nom: str, typ: str, annee: str, maison: dict, pays: str = "") -> dict:
     """Fiche d'une bouteille maison (sans IA)."""
     abv = maison.get("abv_final_estime_pct") or 0
     priced = maison.get("volume_ok") and (maison.get("ingredients_ok") or maison.get("base_ok"))
@@ -417,7 +417,7 @@ def build_maison_payload(nom: str, typ: str, annee: str, maison: dict) -> dict:
         "nom": {"valeur": clean_text(nom) or "-", "confiance": "moyenne"},
         "annee": {"valeur": clean_text(annee, 20) or "-", "confiance": "faible"},
         "type": {"valeur": clean_text(typ) or "maison", "confiance": "moyenne"},
-        "origine": {"valeur": "Maison", "confiance": "élevée"},
+        "origine": {"valeur": f"Maison ({clean_text(pays, 100)})" if pays else "Maison", "confiance": "élevée"},
         "marque_distillerie": {"valeur": "-", "confiance": "faible"},
         "abv": {"valeur": abv, "confiance": "élevée" if abv else "faible"},
         "volume_ml": {
@@ -552,11 +552,175 @@ def normalize_purchase(data: dict) -> dict:
         "verdict": verdict,
         "score": int(score) if 0 <= score <= 10 else None,
         "raison": clean_text(data.get("raison"), MAX_TEXT),
+        "adequation_gouts": clean_text(data.get("adequation_gouts"), MAX_TEXT),
         "prix_estime": clean_text(data.get("prix_estime"), 50),
         "doublon": clean_text(data.get("doublon"), MAX_SHORT),
         "cocktails_debloques": _text_list(data.get("cocktails_debloques"), 6),
         "alternative": clean_text(data.get("alternative"), MAX_SHORT),
     }
+
+
+# ---------------------------------------------------------------------------
+# Modification manuelle d'une fiche
+# ---------------------------------------------------------------------------
+
+
+def apply_edit(info: dict, changes: dict) -> list[str]:
+    """Applique les champs modifiés par l'utilisateur ; renvoie les champs changés.
+
+    Les infos annexes (sources du prix, raison du corps) sont conservées et la
+    confiance passe à "manuelle".
+    """
+    changed = []
+    for key in SPIRIT_FIELDS:
+        if key not in changes or changes[key] is None:
+            continue
+        value = clean_text(changes[key], MAX_TEXT) or "-"
+        if key == "nom" and is_empty(value):
+            raise ValueError("Le nom ne peut pas être vide")
+        current = info.get(key)
+        if str(val(current, "")) == value:
+            continue
+        field = dict(current) if isinstance(current, dict) else {}
+        field["valeur"] = value
+        field["confiance"] = "manuelle"
+        info[key] = field
+        changed.append(key)
+    return changed
+
+
+# ---------------------------------------------------------------------------
+# Dégustations (grille Nez / Bouche / Finale / Rapport qualité-prix)
+# ---------------------------------------------------------------------------
+
+TASTING_CRITERIA = ("nez", "bouche", "finale", "qualite_prix")
+MAX_TASTINGS = 50
+
+CATEGORY_LABELS = {
+    "rhum": "Rhum",
+    "whisky": "Whisky",
+    "gin": "Gin",
+    "vodka": "Vodka",
+    "tequila_mezcal": "Tequila / Mezcal",
+    "liqueurs": "Liqueur",
+    "vin": "Vin",
+    "autres": "Autres",
+}
+
+
+def _score(value: Any) -> float | None:
+    """Note entre 0 et 10 arrondie au demi-point, ou None."""
+    if value is None or value == "":
+        return None
+    try:
+        num = float(str(value).replace(",", "."))
+    except ValueError:
+        return None
+    if not 0 <= num <= 10:
+        return None
+    return round(num * 2) / 2
+
+
+def make_tasting(params: dict, tasting_id: str, date: str) -> dict:
+    """Construit une dégustation ; note globale = moyenne des critères saisis."""
+    notes = {c: _score(params.get(c)) for c in TASTING_CRITERIA}
+    given = [v for v in notes.values() if v is not None]
+    if not given:
+        raise ValueError("Au moins un critère doit être noté (0 à 10)")
+    return {
+        "id": tasting_id,
+        "date": clean_text(date, 32),
+        **notes,
+        "globale": round(sum(given) / len(given), 1),
+        "commentaire": clean_text(params.get("commentaire"), MAX_TEXT),
+    }
+
+
+def tastings(info: dict) -> list[dict]:
+    """Dégustations valides d'une bouteille (plus récente en premier)."""
+    items = info.get("degustations") if isinstance(info, dict) else None
+    if not isinstance(items, list):
+        return []
+    valid = [t for t in items if isinstance(t, dict) and _score(t.get("globale")) is not None]
+    return sorted(valid, key=lambda t: str(t.get("date", "")), reverse=True)
+
+
+def tasting_summary(info: dict) -> dict | None:
+    """Moyennes par critère et note globale moyenne, ou None si jamais dégustée."""
+    items = tastings(info)
+    if not items:
+        return None
+    out: dict[str, Any] = {"nb": len(items)}
+    for key in (*TASTING_CRITERIA, "globale"):
+        values = [t[key] for t in items if isinstance(t.get(key), (int, float))]
+        out[key] = round(sum(values) / len(values), 1) if values else None
+    out["note"] = out.pop("globale")
+    out["derniere"] = items[0].get("date")
+    return out
+
+
+def rated_spirits(spirits: dict, category: str | None = None) -> list[dict]:
+    """Bouteilles dégustées (d'une catégorie), classées par note décroissante."""
+    out = []
+    for sid, info in spirits.items():
+        if not isinstance(info, dict):
+            continue
+        if category and category_for(info) != category:
+            continue
+        summary = tasting_summary(info)
+        if not summary:
+            continue
+        out.append(
+            {
+                "id": sid,
+                "nom": clean_text(val(info.get("nom"), ""), 80),
+                "type": clean_text(val(info.get("type"), ""), 40),
+                "origine": clean_text(val(info.get("origine"), ""), 60),
+                "distillerie": clean_text(val(info.get("marque_distillerie"), ""), 60),
+                "profil_aromatique": clean_text(val(info.get("profil_aromatique"), ""), 200),
+                "prix": price(info) or None,
+                **summary,
+                "commentaires": [
+                    clean_text(t.get("commentaire"), 300)
+                    for t in tastings(info)[:3]
+                    if not is_empty(t.get("commentaire"))
+                ],
+            }
+        )
+    out.sort(key=lambda r: (-(r["note"] or 0), r["nom"].lower()))
+    return out
+
+
+def normalize_profile(data: dict) -> dict:
+    """Valide le profil de goût produit par l'IA."""
+    return {
+        "resume": clean_text(data.get("resume"), MAX_TEXT),
+        "aime": _text_list(data.get("aime"), 8),
+        "aime_pas": _text_list(data.get("aime_pas"), 8),
+        "styles_preferes": _text_list(data.get("styles_preferes"), 6),
+        "origines_preferees": _text_list(data.get("origines_preferees"), 6),
+        "pistes_achat": _text_list(data.get("pistes_achat"), 8),
+        "a_eviter": _text_list(data.get("a_eviter"), 6),
+    }
+
+
+def prompt_taste_profile(category: str, rated: list[dict]) -> str:
+    """Prompt de synthèse des appréciations d'une catégorie."""
+    return "\n\n".join(
+        [
+            f"Tu es un expert en dégustation de {CATEGORY_LABELS.get(category, category)}. "
+            "À partir des notes (sur 10) et commentaires de l'utilisateur, déduis son profil de goût "
+            "pour orienter ses futurs achats. Appuie-toi sur les critères Nez, Bouche, Finale et "
+            "rapport qualité/prix, ainsi que sur les origines, distilleries et profils aromatiques.",
+            _GUARD,
+            _data_block({"degustations": rated[:60]}),
+            "RÈGLES: phrases courtes ; listes de 6 éléments maximum ; pistes_achat = bouteilles ou "
+            "styles précis à essayer, absents de la liste ; a_eviter = styles à éviter.",
+            "FORMAT:\n"
+            '{"resume":"","aime":[],"aime_pas":[],"styles_preferes":[],"origines_preferees":[],'
+            '"pistes_achat":[],"a_eviter":[]}',
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -592,7 +756,7 @@ def inventory_summary(spirits: dict, max_items: int = 150) -> list[dict]:
     return out
 
 
-def prompt_search(nom: str, typ: str, annee: str) -> str:
+def prompt_search(nom: str, typ: str, annee: str, pays: str = "") -> str:
     """Prompt de fiche technique d'un spiritueux."""
     return "\n\n".join(
         [
@@ -600,9 +764,10 @@ def prompt_search(nom: str, typ: str, annee: str) -> str:
             "Croise si possible : Difford's Guide, Liquor.com, Imbibe, Punch, Whisky Advocate, "
             "Rum Ratings, Gin Foundry, fiches distilleries.",
             _GUARD,
-            _data_block({"nom": nom, "type": typ, "annee": annee or "-"}),
+            _data_block({"nom": nom, "type": typ, "annee": annee or "-", "pays_origine": pays or "-"}),
             "RÈGLES:\n"
-            "1) Donne tous les champs, même avec \"-\".\n"
+            "1) Donne tous les champs, même avec \"-\". Si pays_origine est fourni, privilégie la "
+            "bouteille de ce pays et indique-le dans origine.\n"
             "2) profil_aromatique : format \"Famille (Détail) X%\" (total 100%). Familles : Boisé, "
             "Épicé, Fruité, Floral, Agrumes, Herbacé, Fumé, Caramel, Vanillé, Chocolaté, Noix, "
             "Céréales, Minéral, Tertiaire.\n"
@@ -683,12 +848,23 @@ def prompt_audit(spirits: dict, stats: dict) -> str:
     )
 
 
-def prompt_purchase(nom: str, typ: str, prix: float | None, budget: float | None, spirits: dict) -> str:
-    """Prompt d'avis sur un achat envisagé."""
+def prompt_purchase(
+    nom: str,
+    typ: str,
+    prix: float | None,
+    budget: float | None,
+    spirits: dict,
+    profil: dict | None = None,
+) -> str:
+    """Prompt d'avis sur un achat envisagé (tient compte des goûts de l'utilisateur)."""
+    category = category_for({"type": typ}) if typ else None
+    rated = rated_spirits(spirits, category if category != "autres" else None)[:30]
     return "\n\n".join(
         [
             "Tu es un caviste spécialisé en spiritueux. Évalue si l'achat de cette bouteille "
-            "est pertinent pour ce bar (doublons, polyvalence en cocktail, rapport qualité/prix, budget).",
+            "est pertinent pour ce bar (doublons, polyvalence en cocktail, rapport qualité/prix, budget) "
+            "ET pour les goûts de l'utilisateur, déduits de ses dégustations notées sur 10 et de son "
+            "profil de goût s'ils sont fournis.",
             _GUARD,
             _data_block(
                 {
@@ -696,13 +872,19 @@ def prompt_purchase(nom: str, typ: str, prix: float | None, budget: float | None
                     "prix_propose_eur": prix if prix else "-",
                     "budget_max_eur": budget if budget else "-",
                     "inventaire": inventory_summary(spirits),
+                    "mes_degustations": [
+                        {k: r[k] for k in ("nom", "type", "origine", "note", "commentaires")}
+                        for r in rated
+                    ],
+                    "mon_profil_de_gout": profil or "-",
                 }
             ),
             "RÈGLES: verdict parmi \"acheter\", \"attendre\", \"eviter\" ; score de 0 à 10 ; "
-            "raison en 2 phrases maximum ; doublon = bouteille similaire déjà présente ou \"-\".",
+            "raison en 2 phrases maximum ; doublon = bouteille similaire déjà présente ou \"-\" ; "
+            "adequation_gouts = une phrase sur la correspondance avec ses goûts (\"-\" sans dégustation).",
             "FORMAT:\n"
-            '{"verdict":"acheter","score":7,"raison":"","prix_estime":"","doublon":"-",'
-            '"cocktails_debloques":[],"alternative":""}',
+            '{"verdict":"acheter","score":7,"raison":"","adequation_gouts":"","prix_estime":"",'
+            '"doublon":"-","cocktails_debloques":[],"alternative":""}',
         ]
     )
 

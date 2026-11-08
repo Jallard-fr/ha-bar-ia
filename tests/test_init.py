@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.bar_ia.const import DOMAIN
+from custom_components.bar_ia.const import DOMAIN, VERSION
 
 FICHE = {
     "nom": {"valeur": "Diplomatico Reserva Exclusiva", "confiance": "élevée"},
@@ -217,8 +217,67 @@ async def test_card_served_and_autoloaded(
     hass: HomeAssistant, ai_calls, hass_client, light_dependencies
 ) -> None:
     await _setup(hass, ai_calls)
-    light_dependencies.assert_called_once_with(hass, "/bar_ia_static/bar-ia-card.js?v=2.0.0")
+    light_dependencies.assert_called_once_with(hass, f"/bar_ia_static/bar-ia-card.js?v={VERSION}")
     client = await hass_client()
     resp = await client.get("/bar_ia_static/bar-ia-card.js")
     assert resp.status == 200
     assert "customElements.define(\"bar-ia-card\"" in await resp.text()
+
+
+async def test_tastings_profile_and_purchase(hass: HomeAssistant, ai_calls) -> None:
+    calls, responses = ai_calls
+    responses["fiche"] = json.dumps(FICHE)
+    responses["profil"] = json.dumps({"resume": "Amateur de rhums ronds", "aime": ["Vanille"]})
+    responses["achat"] = json.dumps({"verdict": "acheter", "score": 8, "adequation_gouts": "Parfait"})
+    entry = await _setup(hass, ai_calls)
+    await _svc(hass, "search", {"nom": "Diplomatico", "type": "Rhum"})
+    sid = (await _svc(hass, "add_to_inventory", response=True))["spirit_id"]
+
+    with pytest.raises(ServiceValidationError):
+        await _svc(hass, "taste_profile", {"categorie": "rhum"})
+    with pytest.raises(ServiceValidationError):
+        await _svc(hass, "add_tasting", {"spirit_id": sid, "commentaire": "rien"})
+
+    t1 = await _svc(
+        hass,
+        "add_tasting",
+        {"spirit_id": sid, "nez": 8, "bouche": 7, "finale": 9, "qualite_prix": 8, "commentaire": "Rond"},
+        response=True,
+    )
+    assert t1["globale"] == 8.0
+    await _svc(hass, "add_tasting", {"spirit_id": sid, "nez": 6, "date": "2026-01-01"})
+    snap = entry.runtime_data.snapshot()
+    assert snap["spirits"][0]["degustation"]["nb"] == 2
+    assert snap["spirits"][0]["degustation"]["note"] == 7.0
+
+    profil = await _svc(hass, "taste_profile", {"categorie": "rhum"}, response=True)
+    assert profil["aime"] == ["Vanille"] and profil["nb_bouteilles"] == 1
+    assert "Rond" in calls[-1]["instructions"]
+
+    achat = await _svc(hass, "purchase_check", {"nom": "Clairin", "type": "Rhum"}, response=True)
+    assert achat["adequation_gouts"] == "Parfait"
+    assert "Amateur de rhums ronds" in calls[-1]["instructions"]
+
+    await _svc(hass, "delete_tasting", {"spirit_id": sid, "degustation_id": t1["id"]})
+    assert entry.runtime_data.snapshot()["spirits"][0]["degustation"]["nb"] == 1
+    await _svc(hass, "clear_result", {"resultat": "profil_rhum"})
+    assert entry.runtime_data.data["profils"] == {}
+
+
+async def test_update_spirit_and_country(hass: HomeAssistant, ai_calls) -> None:
+    calls, responses = ai_calls
+    responses["fiche"] = json.dumps(FICHE)
+    await _setup(hass, ai_calls)
+    await _svc(hass, "search", {"nom": "Diplomatico", "type": "Rhum", "pays": "Venezuela"})
+    assert '"pays_origine": "Venezuela"' in calls[-1]["instructions"]
+    sid = (await _svc(hass, "add_to_inventory", response=True))["spirit_id"]
+
+    res = await _svc(
+        hass, "update_spirit", {"spirit_id": sid, "prix_moyen": "49", "origine": "Venezuela (Barquisimeto)"},
+        response=True,
+    )
+    assert sorted(res["modifies"]) == ["origine", "prix_moyen"]
+    await hass.async_block_till_done()
+    assert float(hass.states.get("sensor.bar_ia_bar_value").state) == 49
+    with pytest.raises(ServiceValidationError):
+        await _svc(hass, "update_spirit", {"spirit_id": sid, "nom": ""})

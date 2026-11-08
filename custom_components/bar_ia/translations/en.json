@@ -105,6 +105,18 @@
     "ai_failed": {
       "message": "AI task failed: {error}"
     },
+    "tasting_empty": {
+      "message": "Rate at least one criterion (0 to 10)."
+    },
+    "unknown_tasting": {
+      "message": "Unknown tasting: {tasting_id}"
+    },
+    "no_tastings": {
+      "message": "No rated tasting for: {categorie}"
+    },
+    "empty_name": {
+      "message": "Name cannot be empty."
+    },
     "empty_bar": {
       "message": "The bar is empty: add bottles before analysing."
     }
@@ -125,6 +137,10 @@
         "annee": {
           "name": "Year",
           "description": "Vintage or age (optional)."
+        },
+        "pays": {
+          "name": "Country of origin",
+          "description": "Helps the AI find the right bottle (optional)."
         },
         "maison": {
           "name": "Homemade",
@@ -206,6 +222,60 @@
         }
       }
     },
+    "update_spirit": {
+      "name": "Edit a bottle",
+      "description": "Edits a bottle's details (only provided fields change).",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        },
+        "nom": {
+          "name": "Name",
+          "description": ""
+        },
+        "annee": {
+          "name": "Year",
+          "description": ""
+        },
+        "type": {
+          "name": "Type",
+          "description": ""
+        },
+        "origine": {
+          "name": "Origin",
+          "description": "Country / region."
+        },
+        "marque_distillerie": {
+          "name": "Brand / distillery",
+          "description": ""
+        },
+        "abv": {
+          "name": "ABV (%)",
+          "description": ""
+        },
+        "volume_ml": {
+          "name": "Volume (mL)",
+          "description": ""
+        },
+        "prix_moyen": {
+          "name": "Price (€)",
+          "description": "Unit price used for valuation."
+        },
+        "profil_aromatique": {
+          "name": "Aroma profile",
+          "description": ""
+        },
+        "corps_cocktail": {
+          "name": "Cocktail body",
+          "description": "light, medium or strong."
+        },
+        "cocktails": {
+          "name": "Cocktails",
+          "description": ""
+        }
+      }
+    },
     "delete_spirit": {
       "name": "Delete a bottle",
       "description": "Removes the item and its plan cells.",
@@ -271,7 +341,7 @@
       "fields": {
         "resultat": {
           "name": "Result",
-          "description": "search, cocktail, audit or purchase."
+          "description": "search, cocktail, audit, purchase or profil_<category>."
         }
       }
     },
@@ -320,6 +390,64 @@
         "colonnes": {
           "name": "Columns",
           "description": "Number of columns (1-12)."
+        }
+      }
+    },
+    "add_tasting": {
+      "name": "Add a tasting",
+      "description": "Rates a bottle (Nose, Palate, Finish, Value on 10) with a comment.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        },
+        "nez": {
+          "name": "Nose",
+          "description": "Nose score out of 10."
+        },
+        "bouche": {
+          "name": "Palate",
+          "description": "Palate score out of 10."
+        },
+        "finale": {
+          "name": "Finish",
+          "description": "Finish score out of 10."
+        },
+        "qualite_prix": {
+          "name": "Value for money",
+          "description": "Value score out of 10."
+        },
+        "commentaire": {
+          "name": "Comment",
+          "description": "Your impressions."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Tasting date (default today)."
+        }
+      }
+    },
+    "delete_tasting": {
+      "name": "Delete a tasting",
+      "description": "Removes a tasting from history.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        },
+        "degustation_id": {
+          "name": "Tasting",
+          "description": "Tasting identifier."
+        }
+      }
+    },
+    "taste_profile": {
+      "name": "Tasting summary",
+      "description": "AI summarises your ratings for a spirit type into a taste profile, then used by purchase checks.",
+      "fields": {
+        "categorie": {
+          "name": "Category",
+          "description": "rhum, whisky, gin, vodka, tequila_mezcal, liqueurs, vin or autres."
         }
       }
     },

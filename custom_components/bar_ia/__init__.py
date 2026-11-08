@@ -43,6 +43,8 @@ from .const import (
     STATIC_URL,
     VERSION,
 )
+from .frontend_resource import async_register_card_resource
+from .logic import CATEGORIES, SPIRIT_FIELDS, TASTING_CRITERIA
 from .manager import BarManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ _TEXT = vol.All(cv.string, vol.Length(max=255))
 _SPIRIT_ID = vol.All(cv.string, vol.Length(min=1, max=64))
 _CELL = vol.All(cv.string, vol.Match(r"^[Ee]\d{1,2}-\d{1,2}$"))
 _POS = vol.All(vol.Coerce(float), vol.Range(min=0, max=100000))
+_NOTE = vol.All(vol.Coerce(float), vol.Range(min=0, max=10))
 
 SERVICE_SCHEMAS: dict[str, vol.Schema] = {
     "search": vol.Schema(
@@ -63,6 +66,7 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
             vol.Required("nom"): vol.All(cv.string, vol.Length(min=1, max=255)),
             vol.Optional("type", default=""): _TEXT,
             vol.Optional("annee", default=""): vol.All(cv.string, vol.Length(max=20)),
+            vol.Optional("pays", default=""): vol.All(cv.string, vol.Length(max=100)),
             vol.Optional("maison", default=False): cv.boolean,
             vol.Optional("base_utilisee", default=""): vol.All(cv.string, vol.Length(max=50)),
             vol.Optional("ingredients", default=""): _TEXT,
@@ -91,6 +95,12 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
         }
     ),
     "delete_spirit": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
+    "update_spirit": vol.Schema(
+        {
+            vol.Required("spirit_id"): _SPIRIT_ID,
+            **{vol.Optional(f): vol.All(cv.string, vol.Length(max=1000)) for f in SPIRIT_FIELDS},
+        }
+    ),
     "cocktail": vol.Schema(
         {
             vol.Optional("spirit_id"): vol.Any(None, "", _SPIRIT_ID),
@@ -109,8 +119,27 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
         }
     ),
     "clear_result": vol.Schema(
-        {vol.Required("resultat"): vol.In(["search", "cocktail", "audit", "purchase"])}
+        {
+            vol.Required("resultat"): vol.In(
+                ["search", "cocktail", "audit", "purchase", *(f"profil_{c}" for c in CATEGORIES)]
+            )
+        }
     ),
+    "add_tasting": vol.Schema(
+        {
+            vol.Required("spirit_id"): _SPIRIT_ID,
+            **{vol.Optional(c): vol.Any(None, _NOTE) for c in TASTING_CRITERIA},
+            vol.Optional("commentaire", default=""): vol.All(cv.string, vol.Length(max=1000)),
+            vol.Optional("date"): cv.date,
+        }
+    ),
+    "delete_tasting": vol.Schema(
+        {
+            vol.Required("spirit_id"): _SPIRIT_ID,
+            vol.Required("degustation_id"): vol.All(cv.string, vol.Length(min=1, max=32)),
+        }
+    ),
+    "taste_profile": vol.Schema({vol.Optional("categorie", default="rhum"): vol.In(list(CATEGORIES))}),
     "place": vol.Schema({vol.Required("case"): _CELL, vol.Required("spirit_id"): _SPIRIT_ID}),
     "clear_cell": vol.Schema({vol.Required("case"): _CELL}),
     "autofill": vol.Schema({}),
@@ -124,7 +153,17 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
     "import_legacy": vol.Schema({vol.Optional("force", default=False): cv.boolean}),
 }
 
-RESPONSE_SERVICES = {"search", "add_to_inventory", "cocktail", "audit", "purchase_check", "import_legacy"}
+RESPONSE_SERVICES = {
+    "search",
+    "add_to_inventory",
+    "cocktail",
+    "audit",
+    "purchase_check",
+    "import_legacy",
+    "add_tasting",
+    "taste_profile",
+    "update_spirit",
+}
 
 
 def _get_manager(hass: HomeAssistant) -> BarManager:
@@ -176,13 +215,16 @@ def _register_services(hass: HomeAssistant) -> None:
                             "volume_bouteille_ml",
                         )
                     }
-                result = await manager.async_search(d["nom"], d["type"], d["annee"], maison)
+                result = await manager.async_search(d["nom"], d["type"], d["annee"], maison, d["pays"])
             case "add_to_inventory":
                 result = {"spirit_id": await manager.async_add_from_search(d["quantite"])}
             case "adjust_stock":
                 await manager.async_adjust_stock(d["spirit_id"], d["delta"])
             case "set_stock":
                 await manager.async_set_stock(d["spirit_id"], d["quantite"])
+            case "update_spirit":
+                changes = {f: d[f] for f in SPIRIT_FIELDS if f in d}
+                result = {"modifies": await manager.async_update_spirit(d["spirit_id"], changes)}
             case "delete_spirit":
                 await manager.async_delete(d["spirit_id"])
             case "cocktail":
@@ -207,6 +249,16 @@ def _register_services(hass: HomeAssistant) -> None:
                 await manager.async_empty_plan()
             case "set_layout":
                 await manager.async_set_layout(d["etageres"], d["colonnes"])
+            case "add_tasting":
+                params = {c: d.get(c) for c in TASTING_CRITERIA}
+                params["commentaire"] = d["commentaire"]
+                if d.get("date"):
+                    params["date"] = d["date"].isoformat()
+                result = await manager.async_add_tasting(d["spirit_id"], params)
+            case "delete_tasting":
+                await manager.async_delete_tasting(d["spirit_id"], d["degustation_id"])
+            case "taste_profile":
+                result = await manager.async_taste_profile(d["categorie"])
             case "import_legacy":
                 result = await manager.async_import_legacy(force=d["force"])
         if call.service in RESPONSE_SERVICES and call.return_response:
@@ -233,6 +285,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: BarConfigEntry) -> bool:
     entry.runtime_data = manager
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Déclare la carte comme ressource du tableau de bord (comme le ferait HACS).
+    async def _register_card(_hass: HomeAssistant) -> None:
+        await async_register_card_resource(hass)
+
+    entry.async_on_unload(async_at_started(hass, _register_card))
     entry.async_on_unload(entry.add_update_listener(_async_reload))
 
     if not manager.data.get("migrated"):

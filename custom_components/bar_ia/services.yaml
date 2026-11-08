@@ -12,6 +12,10 @@ search:
     annee:
       selector:
         text:
+    pays:
+      example: "Guadeloupe"
+      selector:
+        text:
     maison:
       default: false
       selector:
@@ -75,6 +79,48 @@ set_stock:
       selector:
         number: { min: 0, max: 1000, mode: box }
 
+update_spirit:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+    nom:
+      selector:
+        text:
+    annee:
+      selector:
+        text:
+    type:
+      selector:
+        text:
+    origine:
+      selector:
+        text:
+    marque_distillerie:
+      selector:
+        text:
+    abv:
+      selector:
+        text:
+    volume_ml:
+      selector:
+        text:
+    prix_moyen:
+      selector:
+        text:
+    profil_aromatique:
+      selector:
+        text:
+          multiline: true
+    corps_cocktail:
+      selector:
+        text:
+    cocktails:
+      selector:
+        text:
+          multiline: true
+
 delete_spirit:
   fields:
     spirit_id:
@@ -122,7 +168,19 @@ clear_result:
       required: true
       selector:
         select:
-          options: ["search", "cocktail", "audit", "purchase"]
+          options:
+            - search
+            - cocktail
+            - audit
+            - purchase
+            - profil_rhum
+            - profil_whisky
+            - profil_gin
+            - profil_vodka
+            - profil_tequila_mezcal
+            - profil_liqueurs
+            - profil_vin
+            - profil_autres
 
 place:
   fields:
@@ -158,6 +216,51 @@ set_layout:
       required: true
       selector:
         number: { min: 1, max: 12, mode: box }
+
+add_tasting:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+    nez:
+      selector:
+        number: { min: 0, max: 10, step: 0.5, mode: slider }
+    bouche:
+      selector:
+        number: { min: 0, max: 10, step: 0.5, mode: slider }
+    finale:
+      selector:
+        number: { min: 0, max: 10, step: 0.5, mode: slider }
+    qualite_prix:
+      selector:
+        number: { min: 0, max: 10, step: 0.5, mode: slider }
+    commentaire:
+      selector:
+        text:
+          multiline: true
+    date:
+      selector:
+        date:
+
+delete_tasting:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+    degustation_id:
+      required: true
+      selector:
+        text:
+
+taste_profile:
+  fields:
+    categorie:
+      default: rhum
+      selector:
+        select:
+          options: [rhum, whisky, gin, vodka, tequila_mezcal, liqueurs, vin, autres]
 
 import_legacy:
   fields:
