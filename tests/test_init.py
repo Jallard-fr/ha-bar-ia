@@ -25,12 +25,6 @@ FICHE = {
 }
 
 
-@pytest.fixture
-def ai_calls():
-    """IA simulée : (appels reçus, réponses par mot-clé du nom de tâche)."""
-    return [], {}
-
-
 def _install_fake_ai(hass: HomeAssistant, ai_calls) -> None:
     """Remplace ai_task.generate_data (après chargement de ai_task)."""
     calls, responses = ai_calls

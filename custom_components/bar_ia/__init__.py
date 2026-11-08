@@ -27,7 +27,7 @@ from homeassistant.core import (
     SupportsResponse,
     callback,
 )
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.start import async_at_started
@@ -44,12 +44,13 @@ from .const import (
     VERSION,
 )
 from .frontend_resource import async_register_card_resource
+from .images import BarImageView, ImageError, ImageStore, decode_jpeg
 from .logic import CATEGORIES, SPIRIT_FIELDS, TASTING_CRITERIA
 from .manager import BarManager
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.IMAGE, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 type BarConfigEntry = ConfigEntry[BarManager]
@@ -88,6 +89,13 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
             vol.Optional("delta", default=1): vol.All(vol.Coerce(int), vol.Range(-100, 100)),
         }
     ),
+    "set_image_url": vol.Schema(
+        {vol.Required("spirit_id"): _SPIRIT_ID, vol.Required("url"): vol.All(cv.string, vol.Length(max=2000))}
+    ),
+    "remove_image": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
+    "find_image": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
+    "find_missing_images": vol.Schema({vol.Optional("seulement_sans_image", default=True): cv.boolean}),
+    "stop_job": vol.Schema({}),
     "set_stock": vol.Schema(
         {
             vol.Required("spirit_id"): _SPIRIT_ID,
@@ -163,6 +171,8 @@ RESPONSE_SERVICES = {
     "add_tasting",
     "taste_profile",
     "update_spirit",
+    "find_image",
+    "find_missing_images",
 }
 
 
@@ -188,6 +198,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     add_extra_js_url(hass, f"{STATIC_URL}/{CARD_FILENAME}?v={VERSION}")
 
     websocket_api.async_register_command(hass, ws_subscribe)
+    websocket_api.async_register_command(hass, ws_upload_image)
+    websocket_api.async_register_command(hass, ws_search_photo)
+    hass.http.register_view(BarImageView(ImageStore(hass)))
     _register_services(hass)
     return True
 
@@ -220,6 +233,16 @@ def _register_services(hass: HomeAssistant) -> None:
                 result = {"spirit_id": await manager.async_add_from_search(d["quantite"])}
             case "adjust_stock":
                 await manager.async_adjust_stock(d["spirit_id"], d["delta"])
+            case "set_image_url":
+                await manager.async_set_image_url(d["spirit_id"], d["url"])
+            case "remove_image":
+                await manager.async_remove_image(d["spirit_id"])
+            case "find_image":
+                result = {"trouvee": await manager.async_find_image(d["spirit_id"])}
+            case "find_missing_images":
+                result = await manager.async_find_missing_images(d["seulement_sans_image"])
+            case "stop_job":
+                manager.async_stop_job()
             case "set_stock":
                 await manager.async_set_stock(d["spirit_id"], d["quantite"])
             case "update_spirit":
@@ -347,3 +370,66 @@ async def ws_subscribe(
     connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, SIGNAL_UPDATED, _send)
     connection.send_result(msg["id"])
     _send()
+
+
+def _ws_manager(hass: HomeAssistant, connection, msg) -> BarManager | None:
+    entries = hass.config_entries.async_loaded_entries(DOMAIN)
+    if not entries:
+        connection.send_error(msg["id"], "not_loaded", "Bar IA n'est pas configuré")
+        return None
+    return entries[0].runtime_data
+
+
+def _ws_fail(connection, msg, err: Exception) -> None:
+    connection.send_error(msg["id"], "failed", str(err) or err.__class__.__name__)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/upload_image",
+        vol.Required("spirit_id"): _SPIRIT_ID,
+        vol.Required("data"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_upload_image(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Reçoit la photo (JPEG base64, réduite par la carte) d'une bouteille."""
+    if (manager := _ws_manager(hass, connection, msg)) is None:
+        return
+    try:
+        raw = decode_jpeg(msg["data"])
+        await manager.async_set_image_upload(msg["spirit_id"], raw)
+    except (ImageError, HomeAssistantError) as err:
+        _ws_fail(connection, msg, err)
+        return
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/search_photo",
+        vol.Required("data"): str,
+        vol.Optional("nom", default=""): vol.All(str, vol.Length(max=255)),
+        vol.Optional("type_alcool", default=""): vol.All(str, vol.Length(max=255)),
+        vol.Optional("annee", default=""): vol.All(str, vol.Length(max=20)),
+        vol.Optional("pays", default=""): vol.All(str, vol.Length(max=100)),
+    }
+)
+@websocket_api.async_response
+async def ws_search_photo(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Recherche par photo de l'étiquette (l'IA lit la photo)."""
+    if (manager := _ws_manager(hass, connection, msg)) is None:
+        return
+    try:
+        raw = decode_jpeg(msg["data"])
+        await manager.async_search(
+            msg["nom"], msg["type_alcool"], msg["annee"], None, msg["pays"], photo=raw
+        )
+    except (ImageError, HomeAssistantError) as err:
+        _ws_fail(connection, msg, err)
+        return
+    connection.send_result(msg["id"])

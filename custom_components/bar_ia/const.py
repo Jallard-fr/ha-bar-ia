@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 DOMAIN = "bar_ia"
-VERSION = "2.3.0"
+VERSION = "2.5.0"
 
 STORAGE_KEY = f"{DOMAIN}.data"
 STORAGE_VERSION = 1
 
 SIGNAL_UPDATED = f"{DOMAIN}_updated"
+SIGNAL_PHOTO = f"{DOMAIN}_photo"
 
 CONF_AI_ENTITY = "ai_task_entity"
 

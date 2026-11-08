@@ -77,11 +77,19 @@ C'est tout : aucune ressource à déclarer, aucun fichier à copier.
 
 | Onglet | Fonction |
 | :--- | :--- |
-| 🔍 **Recherche** | Nom, type et **pays d'origine** (optionnel, aide l'IA à trouver la bonne bouteille) → fiche générée par l'IA (origine, distillerie, ABV, prix, profil aromatique, corps cocktail, cocktails conseillés). Cochez **Bouteille maison** pour calculer sans IA l'ABV, le volume, le coût, le prix conseillé et la marge. Puis **Ajouter au bar**. |
-| 🥃 **Mon bar** | Stock (+1 / −1), fiche détaillée, suppression, valorisation totale, maison/industriel, répartition par type. Pour chaque bouteille : **✏️ modification des informations** (prix, origine, distillerie, ABV…) et **dégustations datées** notées sur 10 (Nez, Bouche, Finale, Rapport qualité/prix) avec commentaire ; la note affichée est la moyenne. |
+| 🔍 **Recherche** | **📷 Rechercher par photo** : photographiez l'étiquette, l'IA identifie la bouteille et la photo devient son image. Ou saisissez nom, type et **pays d'origine** : l'IA trouve aussi **automatiquement l'image** de la bouteille (optionnel, aide l'IA à trouver la bonne bouteille) → fiche générée par l'IA (origine, distillerie, ABV, prix, profil aromatique, corps cocktail, cocktails conseillés). Cochez **Bouteille maison** pour calculer sans IA l'ABV, le volume, le coût, le prix conseillé et la marge. Puis **Ajouter au bar**. |
+| 🥃 **Mon bar** | Stock (+1 / −1), fiche détaillée, suppression, valorisation totale, maison/industriel, répartition par type. Vignette de chaque bouteille et bouton **🔎 Trouver les images manquantes** pour les bouteilles existantes. Pour chaque bouteille : **image** (🔎 recherche automatique par l'IA, photo prise avec l'appareil ou la galerie, ou adresse web https), **✏️ modification des informations** (prix, origine, distillerie, ABV…) et **dégustations datées** notées sur 10 (Nez, Bouche, Finale, Rapport qualité/prix) avec commentaire ; la note affichée est la moyenne. |
 | 🗺️ **Plan** | Grille étagères × colonnes. Choisissez une bouteille puis cliquez une case pour la ranger. Remplissage automatique, vidage, changement de dimensions. |
 | 🍸 **Barman** | Cocktail proposé selon une bouteille, le type d'alcool, vos ingrédients et l'occasion. |
 | 📈 **Conseils** | **Mes dégustations** : classement par type et **synthèse IA de vos goûts** (ce que vous aimez, styles et origines préférés, pistes d'achat). **Analyse stratégique** du bar (score, forces, manques, achats recommandés) et **vérification d'une opportunité d'achat** (verdict, adéquation à vos goûts d'après vos dégustations et votre profil, doublons, cocktails débloqués, respect du budget). |
+
+### Recherche automatique d'images
+
+1. **Candidats** : [Open Food Facts](https://world.openfoodfacts.org) (base produits libre), [Wikimedia Commons](https://commons.wikimedia.org), puis adresses proposées par l'IA.
+2. **Téléchargement contrôlé** : https uniquement, hôtes du réseau local refusés, 6 Mo maximum, conversion en JPEG 800 px.
+3. **Vérification visuelle** : l'IA regarde chaque image et ne garde que celle qui montre la bonne bouteille. La source est affichée sous l'image.
+
+Chaque bouteille demande 1 à 6 appels à l'IA. Le traitement des bouteilles existantes se fait une par une (pause de 2 s) et peut être arrêté à tout moment. Les bouteilles maison et celles qui ont déjà une image ne sont pas modifiées.
 
 ### Entités créées
 
@@ -89,7 +97,7 @@ Capteurs : bouteilles, valeur du bar, bouteilles et valeur maison / industrielle
 
 ### Services (pour vos automatisations)
 
-`bar_ia.search`, `add_to_inventory`, `adjust_stock`, `set_stock`, `update_spirit`, `delete_spirit`, `cocktail`, `audit`, `purchase_check`, `clear_result`, `place`, `clear_cell`, `autofill`, `empty_plan`, `set_layout`, `add_tasting`, `delete_tasting`, `taste_profile`, `import_legacy`.
+`bar_ia.search`, `add_to_inventory`, `adjust_stock`, `set_stock`, `update_spirit`, `find_image`, `find_missing_images`, `stop_job`, `set_image_url`, `remove_image`, `delete_spirit`, `cocktail`, `audit`, `purchase_check`, `clear_result`, `place`, `clear_cell`, `autofill`, `empty_plan`, `set_layout`, `add_tasting`, `delete_tasting`, `taste_profile`, `import_legacy`.
 
 Les services IA renvoient leur résultat (`response_variable`) :
 
@@ -121,6 +129,7 @@ Pour relancer l'import manuellement : action `bar_ia.import_legacy` avec `force:
 ## 🔐 Sécurité
 
 - Aucun jeton : l'intégration s'exécute dans Home Assistant et n'appelle pas son API REST.
+- Les photos sont réduites dans le navigateur, contrôlées (JPEG, 2 Mo maximum) et stockées dans `/config/bar_ia/images`. Elles ne sont servies qu'aux utilisateurs connectés (chemins signés). Les images web doivent être en `https://`.
 - Les données du bar ne sont visibles que par les utilisateurs authentifiés (WebSocket HA). Aucun fichier public n'est généré dans `www/`.
 - Les saisies sont validées (longueur, format des cases `E1-1`, bornes numériques).
 - Le prompt envoyé à l'IA isole les saisies dans un bloc de données à ne jamais traiter comme des instructions.

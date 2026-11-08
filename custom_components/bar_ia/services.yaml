@@ -121,6 +121,42 @@ update_spirit:
         text:
           multiline: true
 
+set_image_url:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+    url:
+      required: true
+      example: "https://exemple.fr/bouteille.jpg"
+      selector:
+        text:
+          type: url
+
+find_image:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+
+find_missing_images:
+  fields:
+    seulement_sans_image:
+      default: true
+      selector:
+        boolean:
+
+stop_job:
+
+remove_image:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+
 delete_spirit:
   fields:
     spirit_id:

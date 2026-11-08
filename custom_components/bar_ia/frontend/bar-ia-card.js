@@ -7,7 +7,7 @@
  * avant insertion dans le DOM.
  */
 (() => {
-  const VERSION = "2.3.0";
+  const VERSION = "2.5.0";
   if (customElements.get("bar-ia-card")) return;
 
   const esc = (v) =>
@@ -17,6 +17,28 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+
+  // Réduit une photo (appareil photo / galerie) en JPEG ; renvoie le base64 sans préfixe.
+  const resizeImage = (file, maxDim, quality = 0.85) =>
+    new Promise((resolve, reject) => {
+      if (!file || !/^image\//.test(file.type || "image/")) return reject(new Error("Ce fichier n'est pas une image."));
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image illisible.")); };
+      img.src = url;
+    });
 
   const val = (f) => (f && typeof f === "object" && !Array.isArray(f) ? f.valeur : f);
   const fmtEur = (n) =>
@@ -62,6 +84,51 @@
       this._editing = null; // id bouteille en cours de modification
       this._cell = null; // case sélectionnée (Plan)
       this._unsub = null;
+      this._signed = {}; // chemin d'image local -> {url, t}
+    }
+
+    // URL affichable d'une image : web (https) directe, locale via chemin signé (authentifié).
+    _imgSrc(img) {
+      if (!img) return "";
+      if (img.type === "url") return img.url;
+      if (img.type !== "local" || !this._hass) return "";
+      const c = this._signed[img.path];
+      if (c && c.url && Date.now() - c.t < 20 * 3600 * 1000) return c.url;
+      if (!c || (!c.pending && Date.now() - c.t > 5000)) {
+        this._signed[img.path] = { pending: true, t: Date.now() };
+        this._hass.callWS({ type: "auth/sign_path", path: img.path, expires: 86400 })
+          .then((r) => { this._signed[img.path] = { url: r.path, t: Date.now() }; this._render(); })
+          .catch(() => { this._signed[img.path] = { t: Date.now() }; });
+      }
+      return c?.url || "";
+    }
+
+    _imgTag(img, cls) {
+      const src = this._imgSrc(img);
+      return src
+        ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+        : `<div class="${cls} ph">🍾</div>`;
+    }
+
+    _host(url) {
+      try { return new URL(url).hostname; } catch (_e) { return url === "ia" ? "IA" : String(url || ""); }
+    }
+
+    _renderImageBlock(s) {
+      const has = !!s.image;
+      return `<div class="imgblock">
+          ${has ? this._imgTag(s.image, "big") : ""}
+          ${has && s.image.source ? `<div class="sub center">Source : ${esc(this._host(s.image.source))}</div>` : ""}
+          <div class="actions">
+            <button data-act="find-image" data-sid="${esc(s.id)}" ${this._data?.status === "en_cours" || this._data?.job ? "disabled" : ""}>🔎 Chercher une image (IA)</button>
+            <label class="btn">📷 ${has ? "Changer la photo" : "Ajouter une photo"}<input type="file" accept="image/*" data-upload="${esc(s.id)}" hidden></label>
+            ${has ? `<button data-act="rm-image" data-sid="${esc(s.id)}">Retirer l'image</button>` : ""}
+          </div>
+          <div class="actions">
+            ${this._input(`u_${s.id}`, "…ou adresse web de l'image (https://)", { max: 2000, ph: "https://…" })}
+            <button data-act="url-image" data-sid="${esc(s.id)}">🔗 Utiliser ce lien</button>
+          </div>
+        </div>`;
     }
 
     setConfig(config) {
@@ -177,6 +244,13 @@
         }[this._tab]?.() ?? "";
       }
 
+      const job = d?.job;
+      const jobBar = !job ? "" : `<div class="status run"><span class="spin"></span>${
+        job.type === "images"
+          ? `Recherche d'images : ${esc(job.fait)}/${esc(job.total)} (trouvées : ${esc(job.trouvees)})${job.label ? " · " + esc(job.label) : ""}`
+          : job.type === "image_recherche" ? `Recherche d'une image pour ${esc(job.label || "la fiche")}…`
+          : `Recherche d'une image pour ${esc(job.label)}…`
+        }${job.type === "images" ? `<button class="stop" data-act="stop-job">Arrêter</button>` : ""}</div>`;
       const status = !d
         ? ""
         : running
@@ -194,6 +268,7 @@
           </div>
           <nav>${TABS.filter(([k]) => this._visibleTabs().includes(k)).map(([k, l]) => `<button class="tab ${k === this._tab ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</nav>
           ${status}
+          ${jobBar}
           ${this._error && d ? `<div class="err">${esc(this._error)}</div>` : ""}
           <div class="body ${this._busy ? "busy" : ""}">${body}</div>
         </ha-card>`;
@@ -260,8 +335,10 @@
         </div>
         <div class="actions">
           <button class="primary" data-act="search" ${d.status === "en_cours" ? "disabled" : ""}>${maison ? "Calculer la fiche" : "Rechercher avec l'IA"}</button>
+          ${maison ? "" : `<label class="btn primary ${d.status === "en_cours" ? "off" : ""}">📷 Rechercher par photo<input type="file" accept="image/*" data-photosearch hidden ${d.status === "en_cours" ? "disabled" : ""}></label>`}
         </div>
-        ${s ? `${this._renderFiche(s.fiche, s.maison)}
+        ${maison ? "" : `<div class="sub">Photographiez l'étiquette : l'IA identifie la bouteille. Les champs ci-dessus servent alors d'indices facultatifs.</div>`}
+        ${s ? `${s.image ? this._imgTag(s.image, "big") : ""}${s.image?.source ? `<div class="sub center">Source : ${esc(this._host(s.image.source))}</div>` : ""}${this._renderFiche(s.fiche, s.maison)}
           <div class="actions">
             ${this._input("quantite", "Quantité", { type: "number", min: 1 })}
             <button class="primary" data-act="add">➕ Ajouter au bar</button>
@@ -276,6 +353,7 @@
       const list = d.spirits.length
         ? d.spirits.map((s) => `
           <div class="row ${s.id === this._selected ? "sel" : ""}" data-sel="${esc(s.id)}">
+            ${this._imgTag(s.image, "thumb")}
             <div class="lbl">${esc(s.label)}<div class="sub">${esc(val(s.fiche.type) || "")}${s.prix ? " · " + esc(fmtEur(s.prix)) : ""}${s.degustation ? ` · <span class="note">★ ${esc(s.degustation.note)}/10</span> (${esc(s.degustation.nb)})` : ""}</div></div>
             <div class="qty">
               <button class="ic" data-adj="${esc(s.id)}" data-delta="-1" title="Retirer">−</button>
@@ -283,7 +361,7 @@
               <button class="ic" data-adj="${esc(s.id)}" data-delta="1" title="Ajouter">+</button>
             </div>
           </div>
-          ${s.id === this._selected ? `${this._editing === s.id ? this._renderEdit(s) : `${this._renderFiche(s.fiche, s.fiche.maison)}
+          ${s.id === this._selected ? `${this._renderImageBlock(s)}${this._editing === s.id ? this._renderEdit(s) : `${this._renderFiche(s.fiche, s.fiche.maison)}
             <div class="actions"><button data-act="edit" data-sid="${esc(s.id)}">✏️ Modifier les informations</button></div>`}
             ${this._renderTastings(s)}
             <div class="actions"><button class="danger" data-del="${esc(s.id)}">🗑️ Supprimer cette bouteille</button></div>` : ""}`).join("")
@@ -297,6 +375,7 @@
           <div><span>🏭 Industriel</span><b>${esc(st.bouteilles_industrielles)} · ${esc(fmtEur(st.valeur_industrielle))}</b></div>
         </div>
         <div class="chips">${cats}</div>
+        ${d.spirits.some((s) => !s.image && !s.maison) ? `<div class="actions"><button data-act="find-missing" ${d.status === "en_cours" || d.job ? "disabled" : ""}>🔎 Trouver les images manquantes (${esc(d.spirits.filter((s) => !s.image && !s.maison).length)})</button></div>` : ""}
         <div class="list">${list}</div>`;
     }
 
@@ -521,6 +600,12 @@
           this._render();
         })
       );
+      root.querySelectorAll("[data-upload]").forEach((inp) =>
+        inp.addEventListener("change", () => this._uploadPhoto(inp.dataset.upload, inp.files?.[0]))
+      );
+      root.querySelectorAll("[data-photosearch]").forEach((inp) =>
+        inp.addEventListener("change", () => this._photoSearch(inp.files?.[0]))
+      );
       root.querySelectorAll("[data-deltaste]").forEach((b) =>
         b.addEventListener("click", () => {
           if (confirm("Supprimer cette dégustation ?"))
@@ -530,6 +615,37 @@
       root.querySelectorAll("[data-act]").forEach((b) =>
         b.addEventListener("click", () => this._action(b.dataset.act, b.dataset))
       );
+    }
+
+    async _ws(msg) {
+      this._error = "";
+      this._busy = true;
+      this._render();
+      try {
+        await this._hass.callWS(msg);
+      } catch (err) {
+        this._error = err?.message || String(err);
+      } finally {
+        this._busy = false;
+        this._render();
+      }
+    }
+
+    async _uploadPhoto(sid, file) {
+      if (!file) return;
+      let data;
+      try { data = await resizeImage(file, 800, 0.85); } catch (err) { this._error = err.message; return this._render(); }
+      return this._ws({ type: "bar_ia/upload_image", spirit_id: sid, data });
+    }
+
+    async _photoSearch(file) {
+      if (!file) return;
+      let data;
+      try { data = await resizeImage(file, 1600, 0.88); } catch (err) { this._error = err.message; return this._render(); }
+      return this._ws({
+        type: "bar_ia/search_photo", data,
+        nom: this._txt("nom"), type_alcool: this._txt("type"), annee: this._txt("annee"), pays: this._txt("pays"),
+      });
     }
 
     _num(name) {
@@ -588,6 +704,27 @@
         }
         case "audit":
           return this._call("audit");
+        case "find-image":
+          return this._call("find_image", { spirit_id: ds.sid });
+        case "find-missing": {
+          const n = this._data.spirits.filter((s) => !s.image && !s.maison).length;
+          if (confirm(`Chercher une image pour ${n} bouteille(s) sans image ? Chaque bouteille demande quelques appels à l'IA ; vous pourrez arrêter à tout moment.`))
+            return this._call("find_missing_images", { seulement_sans_image: true });
+          return;
+        }
+        case "stop-job":
+          return this._call("stop_job");
+        case "rm-image":
+          if (confirm("Retirer l'image de cette bouteille ?")) return this._call("remove_image", { spirit_id: ds.sid });
+          return;
+        case "url-image": {
+          const url = this._txt(`u_${ds.sid}`);
+          if (!/^https:\/\/\S+$/i.test(url)) { this._error = "Collez une adresse commençant par https://"; return this._render(); }
+          return this._call("set_image_url", { spirit_id: ds.sid, url }).then(() => {
+            if (!this._error) delete this._form[`u_${ds.sid}`];
+            this._render();
+          });
+        }
         case "edit": {
           const sp = this._spirit(ds.sid);
           if (!sp) return;
@@ -705,6 +842,18 @@
     h4 { margin:6px 0 2px; font-size:.95em; }
     ul, ol { margin:0; padding-left:20px; }
     details { margin-top:8px; }
+    .center { text-align:center; }
+    button.stop { margin-left:auto; padding:2px 10px; }
+    .thumb { width:44px; height:44px; border-radius:6px; object-fit:contain; background: var(--secondary-background-color, #f2f2f2); flex-shrink:0; }
+    .thumb.ph { display:flex; align-items:center; justify-content:center; font-size:20px; opacity:.5; }
+    .list .row { justify-content:flex-start; }
+    .list .row .lbl { flex:1; }
+    img.big { display:block; max-width:100%; max-height:280px; margin:8px auto; border-radius:8px; object-fit:contain; }
+    div.big.ph { display:none; }
+    .imgblock { border-bottom:1px solid var(--divider-color, #e0e0e0); padding-bottom:6px; }
+    label.btn { font: inherit; cursor:pointer; border-radius:6px; border:1px solid var(--divider-color, #e0e0e0); background: var(--secondary-background-color, #f2f2f2); color: var(--primary-text-color, #212121); padding:6px 12px; display:inline-block; }
+    label.btn.primary { background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); border-color: transparent; }
+    label.btn.off { opacity:.5; pointer-events:none; }
     .note { color: #c77c02; font-weight:600; }
     .trow { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--divider-color, #e0e0e0); }
     .f textarea { font: inherit; padding:6px 8px; border-radius:6px; border:1px solid var(--divider-color, #e0e0e0); background: var(--card-background-color, #fff); color: var(--primary-text-color, #212121); resize: vertical; }

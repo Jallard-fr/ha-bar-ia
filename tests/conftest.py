@@ -20,6 +20,13 @@ async def light_dependencies(hass: HomeAssistant):
     Le service ai_task.generate_data est simulé dans chaque test.
     """
     assert await async_setup_component(hass, "http", {})
+    assert await async_setup_component(hass, "image", {})
     hass.config.components.update({"frontend", "ai_task"})
     with patch("custom_components.bar_ia.add_extra_js_url") as js:
         yield js
+
+
+@pytest.fixture
+def ai_calls():
+    """IA simulée : (appels reçus, réponses par mot-clé du nom de tâche)."""
+    return [], {}
