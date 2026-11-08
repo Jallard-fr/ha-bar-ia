@@ -114,6 +114,9 @@
     "no_tastings": {
       "message": "No rated tasting for: {categorie}"
     },
+    "empty_name": {
+      "message": "Name cannot be empty."
+    },
     "empty_bar": {
       "message": "The bar is empty: add bottles before analysing."
     }
@@ -134,6 +137,10 @@
         "annee": {
           "name": "Year",
           "description": "Vintage or age (optional)."
+        },
+        "pays": {
+          "name": "Country of origin",
+          "description": "Helps the AI find the right bottle (optional)."
         },
         "maison": {
           "name": "Homemade",
@@ -212,6 +219,60 @@
         "quantite": {
           "name": "Quantity",
           "description": "New number of bottles."
+        }
+      }
+    },
+    "update_spirit": {
+      "name": "Edit a bottle",
+      "description": "Edits a bottle's details (only provided fields change).",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        },
+        "nom": {
+          "name": "Name",
+          "description": ""
+        },
+        "annee": {
+          "name": "Year",
+          "description": ""
+        },
+        "type": {
+          "name": "Type",
+          "description": ""
+        },
+        "origine": {
+          "name": "Origin",
+          "description": "Country / region."
+        },
+        "marque_distillerie": {
+          "name": "Brand / distillery",
+          "description": ""
+        },
+        "abv": {
+          "name": "ABV (%)",
+          "description": ""
+        },
+        "volume_ml": {
+          "name": "Volume (mL)",
+          "description": ""
+        },
+        "prix_moyen": {
+          "name": "Price (€)",
+          "description": "Unit price used for valuation."
+        },
+        "profil_aromatique": {
+          "name": "Aroma profile",
+          "description": ""
+        },
+        "corps_cocktail": {
+          "name": "Cocktail body",
+          "description": "light, medium or strong."
+        },
+        "cocktails": {
+          "name": "Cocktails",
+          "description": ""
         }
       }
     },

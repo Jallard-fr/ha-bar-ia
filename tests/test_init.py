@@ -262,3 +262,22 @@ async def test_tastings_profile_and_purchase(hass: HomeAssistant, ai_calls) -> N
     assert entry.runtime_data.snapshot()["spirits"][0]["degustation"]["nb"] == 1
     await _svc(hass, "clear_result", {"resultat": "profil_rhum"})
     assert entry.runtime_data.data["profils"] == {}
+
+
+async def test_update_spirit_and_country(hass: HomeAssistant, ai_calls) -> None:
+    calls, responses = ai_calls
+    responses["fiche"] = json.dumps(FICHE)
+    await _setup(hass, ai_calls)
+    await _svc(hass, "search", {"nom": "Diplomatico", "type": "Rhum", "pays": "Venezuela"})
+    assert '"pays_origine": "Venezuela"' in calls[-1]["instructions"]
+    sid = (await _svc(hass, "add_to_inventory", response=True))["spirit_id"]
+
+    res = await _svc(
+        hass, "update_spirit", {"spirit_id": sid, "prix_moyen": "49", "origine": "Venezuela (Barquisimeto)"},
+        response=True,
+    )
+    assert sorted(res["modifies"]) == ["origine", "prix_moyen"]
+    await hass.async_block_till_done()
+    assert float(hass.states.get("sensor.bar_ia_bar_value").state) == 49
+    with pytest.raises(ServiceValidationError):
+        await _svc(hass, "update_spirit", {"spirit_id": sid, "nom": ""})

@@ -44,7 +44,7 @@ from .const import (
     VERSION,
 )
 from .frontend_resource import async_register_card_resource
-from .logic import CATEGORIES, TASTING_CRITERIA
+from .logic import CATEGORIES, SPIRIT_FIELDS, TASTING_CRITERIA
 from .manager import BarManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +66,7 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
             vol.Required("nom"): vol.All(cv.string, vol.Length(min=1, max=255)),
             vol.Optional("type", default=""): _TEXT,
             vol.Optional("annee", default=""): vol.All(cv.string, vol.Length(max=20)),
+            vol.Optional("pays", default=""): vol.All(cv.string, vol.Length(max=100)),
             vol.Optional("maison", default=False): cv.boolean,
             vol.Optional("base_utilisee", default=""): vol.All(cv.string, vol.Length(max=50)),
             vol.Optional("ingredients", default=""): _TEXT,
@@ -94,6 +95,12 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
         }
     ),
     "delete_spirit": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
+    "update_spirit": vol.Schema(
+        {
+            vol.Required("spirit_id"): _SPIRIT_ID,
+            **{vol.Optional(f): vol.All(cv.string, vol.Length(max=1000)) for f in SPIRIT_FIELDS},
+        }
+    ),
     "cocktail": vol.Schema(
         {
             vol.Optional("spirit_id"): vol.Any(None, "", _SPIRIT_ID),
@@ -155,6 +162,7 @@ RESPONSE_SERVICES = {
     "import_legacy",
     "add_tasting",
     "taste_profile",
+    "update_spirit",
 }
 
 
@@ -207,13 +215,16 @@ def _register_services(hass: HomeAssistant) -> None:
                             "volume_bouteille_ml",
                         )
                     }
-                result = await manager.async_search(d["nom"], d["type"], d["annee"], maison)
+                result = await manager.async_search(d["nom"], d["type"], d["annee"], maison, d["pays"])
             case "add_to_inventory":
                 result = {"spirit_id": await manager.async_add_from_search(d["quantite"])}
             case "adjust_stock":
                 await manager.async_adjust_stock(d["spirit_id"], d["delta"])
             case "set_stock":
                 await manager.async_set_stock(d["spirit_id"], d["quantite"])
+            case "update_spirit":
+                changes = {f: d[f] for f in SPIRIT_FIELDS if f in d}
+                result = {"modifies": await manager.async_update_spirit(d["spirit_id"], changes)}
             case "delete_spirit":
                 await manager.async_delete(d["spirit_id"])
             case "cocktail":

@@ -216,3 +216,21 @@ def test_rated_spirits_by_category_and_prompts():
     assert "mes_degustations" in achat and "Alpha" in achat and "Jamaïque" in achat
     assert '"nom": "Gamma"' not in achat.split("mes_degustations")[1]
     assert logic.normalize_purchase({"adequation_gouts": "Colle à vos goûts"})["adequation_gouts"]
+
+
+def test_apply_edit_keeps_extras_and_marks_manual():
+    info = spirit("Alpha", "Rhum", prix="30")
+    info["prix_moyen"] = {"valeur": "30", "sources": "IA", "confiance": "moyenne"}
+    changed = logic.apply_edit(info, {"prix_moyen": "42,5", "origine": "Guadeloupe", "nom": "Alpha", "inconnu": "x"})
+    assert sorted(changed) == ["origine", "prix_moyen"]
+    assert info["prix_moyen"] == {"valeur": "42,5", "sources": "IA", "confiance": "manuelle"}
+    assert logic.price(info) == 42.5
+    assert "inconnu" not in info
+    with pytest.raises(ValueError):
+        logic.apply_edit(info, {"nom": "  "})
+
+
+def test_search_prompt_and_maison_with_country():
+    assert '"pays_origine": "Guadeloupe"' in logic.prompt_search("X", "Rhum", "", "Guadeloupe")
+    m = logic.compute_maison({})
+    assert logic.build_maison_payload("X", "Rhum", "", m, "Martinique")["origine"]["valeur"] == "Maison (Martinique)"

@@ -114,6 +114,9 @@
     "no_tastings": {
       "message": "Aucune dégustation notée pour : {categorie}"
     },
+    "empty_name": {
+      "message": "Le nom ne peut pas être vide."
+    },
     "empty_bar": {
       "message": "Le bar est vide : ajoutez des bouteilles avant l'analyse."
     }
@@ -134,6 +137,10 @@
         "annee": {
           "name": "Année",
           "description": "Millésime ou âge (optionnel)."
+        },
+        "pays": {
+          "name": "Pays d'origine",
+          "description": "Aide l'IA à trouver la bonne bouteille (optionnel)."
         },
         "maison": {
           "name": "Bouteille maison",
@@ -212,6 +219,60 @@
         "quantite": {
           "name": "Quantité",
           "description": "Nouveau nombre de bouteilles."
+        }
+      }
+    },
+    "update_spirit": {
+      "name": "Modifier une bouteille",
+      "description": "Modifie les informations d'une bouteille (seuls les champs fournis changent).",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        },
+        "nom": {
+          "name": "Nom",
+          "description": ""
+        },
+        "annee": {
+          "name": "Année",
+          "description": ""
+        },
+        "type": {
+          "name": "Type",
+          "description": ""
+        },
+        "origine": {
+          "name": "Origine",
+          "description": "Pays / région."
+        },
+        "marque_distillerie": {
+          "name": "Marque / distillerie",
+          "description": ""
+        },
+        "abv": {
+          "name": "ABV (%)",
+          "description": ""
+        },
+        "volume_ml": {
+          "name": "Volume (mL)",
+          "description": ""
+        },
+        "prix_moyen": {
+          "name": "Prix (€)",
+          "description": "Prix unitaire utilisé pour la valorisation."
+        },
+        "profil_aromatique": {
+          "name": "Profil aromatique",
+          "description": ""
+        },
+        "corps_cocktail": {
+          "name": "Corps cocktail",
+          "description": "léger, moyen ou puissant."
+        },
+        "cocktails": {
+          "name": "Cocktails",
+          "description": ""
         }
       }
     },

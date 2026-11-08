@@ -12,6 +12,10 @@ search:
     annee:
       selector:
         text:
+    pays:
+      example: "Guadeloupe"
+      selector:
+        text:
     maison:
       default: false
       selector:
@@ -74,6 +78,48 @@ set_stock:
       required: true
       selector:
         number: { min: 0, max: 1000, mode: box }
+
+update_spirit:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+    nom:
+      selector:
+        text:
+    annee:
+      selector:
+        text:
+    type:
+      selector:
+        text:
+    origine:
+      selector:
+        text:
+    marque_distillerie:
+      selector:
+        text:
+    abv:
+      selector:
+        text:
+    volume_ml:
+      selector:
+        text:
+    prix_moyen:
+      selector:
+        text:
+    profil_aromatique:
+      selector:
+        text:
+          multiline: true
+    corps_cocktail:
+      selector:
+        text:
+    cocktails:
+      selector:
+        text:
+          multiline: true
 
 delete_spirit:
   fields:

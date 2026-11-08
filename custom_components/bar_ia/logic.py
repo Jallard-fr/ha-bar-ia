@@ -409,7 +409,7 @@ def compute_maison(params: dict) -> dict:
     }
 
 
-def build_maison_payload(nom: str, typ: str, annee: str, maison: dict) -> dict:
+def build_maison_payload(nom: str, typ: str, annee: str, maison: dict, pays: str = "") -> dict:
     """Fiche d'une bouteille maison (sans IA)."""
     abv = maison.get("abv_final_estime_pct") or 0
     priced = maison.get("volume_ok") and (maison.get("ingredients_ok") or maison.get("base_ok"))
@@ -417,7 +417,7 @@ def build_maison_payload(nom: str, typ: str, annee: str, maison: dict) -> dict:
         "nom": {"valeur": clean_text(nom) or "-", "confiance": "moyenne"},
         "annee": {"valeur": clean_text(annee, 20) or "-", "confiance": "faible"},
         "type": {"valeur": clean_text(typ) or "maison", "confiance": "moyenne"},
-        "origine": {"valeur": "Maison", "confiance": "élevée"},
+        "origine": {"valeur": f"Maison ({clean_text(pays, 100)})" if pays else "Maison", "confiance": "élevée"},
         "marque_distillerie": {"valeur": "-", "confiance": "faible"},
         "abv": {"valeur": abv, "confiance": "élevée" if abv else "faible"},
         "volume_ml": {
@@ -558,6 +558,35 @@ def normalize_purchase(data: dict) -> dict:
         "cocktails_debloques": _text_list(data.get("cocktails_debloques"), 6),
         "alternative": clean_text(data.get("alternative"), MAX_SHORT),
     }
+
+
+# ---------------------------------------------------------------------------
+# Modification manuelle d'une fiche
+# ---------------------------------------------------------------------------
+
+
+def apply_edit(info: dict, changes: dict) -> list[str]:
+    """Applique les champs modifiés par l'utilisateur ; renvoie les champs changés.
+
+    Les infos annexes (sources du prix, raison du corps) sont conservées et la
+    confiance passe à "manuelle".
+    """
+    changed = []
+    for key in SPIRIT_FIELDS:
+        if key not in changes or changes[key] is None:
+            continue
+        value = clean_text(changes[key], MAX_TEXT) or "-"
+        if key == "nom" and is_empty(value):
+            raise ValueError("Le nom ne peut pas être vide")
+        current = info.get(key)
+        if str(val(current, "")) == value:
+            continue
+        field = dict(current) if isinstance(current, dict) else {}
+        field["valeur"] = value
+        field["confiance"] = "manuelle"
+        info[key] = field
+        changed.append(key)
+    return changed
 
 
 # ---------------------------------------------------------------------------
@@ -727,7 +756,7 @@ def inventory_summary(spirits: dict, max_items: int = 150) -> list[dict]:
     return out
 
 
-def prompt_search(nom: str, typ: str, annee: str) -> str:
+def prompt_search(nom: str, typ: str, annee: str, pays: str = "") -> str:
     """Prompt de fiche technique d'un spiritueux."""
     return "\n\n".join(
         [
@@ -735,9 +764,10 @@ def prompt_search(nom: str, typ: str, annee: str) -> str:
             "Croise si possible : Difford's Guide, Liquor.com, Imbibe, Punch, Whisky Advocate, "
             "Rum Ratings, Gin Foundry, fiches distilleries.",
             _GUARD,
-            _data_block({"nom": nom, "type": typ, "annee": annee or "-"}),
+            _data_block({"nom": nom, "type": typ, "annee": annee or "-", "pays_origine": pays or "-"}),
             "RÈGLES:\n"
-            "1) Donne tous les champs, même avec \"-\".\n"
+            "1) Donne tous les champs, même avec \"-\". Si pays_origine est fourni, privilégie la "
+            "bouteille de ce pays et indique-le dans origine.\n"
             "2) profil_aromatique : format \"Famille (Détail) X%\" (total 100%). Familles : Boisé, "
             "Épicé, Fruité, Floral, Agrumes, Herbacé, Fumé, Caramel, Vanillé, Chocolaté, Noix, "
             "Céréales, Minéral, Tertiaire.\n"

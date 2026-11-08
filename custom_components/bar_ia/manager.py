@@ -211,6 +211,18 @@ class BarManager:
         self.data["plan"] = logic.trim_placements(self.data["plan"], sid, info["nombre_bouteilles"])
         await self._async_commit()
 
+    async def async_update_spirit(self, sid: str, changes: dict) -> list[str]:
+        """Modifie les informations d'une bouteille."""
+        info = self._require_spirit(sid)
+        try:
+            changed = logic.apply_edit(info, changes)
+        except ValueError as err:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="empty_name") from err
+        if changed:
+            info["modifie_le"] = dt_util.now().isoformat()
+            await self._async_commit()
+        return changed
+
     async def async_add_tasting(self, sid: str, params: dict) -> dict:
         """Ajoute une dégustation datée à une bouteille."""
         info = self._require_spirit(sid)
@@ -360,17 +372,18 @@ class BarManager:
         return result
 
     async def async_search(
-        self, nom: str, typ: str, annee: str, maison_params: dict | None
+        self, nom: str, typ: str, annee: str, maison_params: dict | None, pays: str = ""
     ) -> dict:
         """Génère une fiche (IA) ou calcule une fiche maison (sans IA)."""
         nom = logic.clean_text(nom)
         typ = logic.clean_text(typ)
         annee = logic.clean_text(annee, 20)
+        pays = logic.clean_text(pays, 100)
         if maison_params is not None:
             maison = logic.compute_maison(maison_params)
-            fiche = logic.build_maison_payload(nom, typ, annee, maison)
+            fiche = logic.build_maison_payload(nom, typ, annee, maison, pays)
         else:
-            raw = await self._async_ai("search", logic.prompt_search(nom, typ, annee))
+            raw = await self._async_ai("search", logic.prompt_search(nom, typ, annee, pays))
             try:
                 fiche = logic.normalize_spirit(raw)
             except ValueError as err:
@@ -386,7 +399,7 @@ class BarManager:
         self.data["search"] = {
             "fiche": fiche,
             "maison": maison,
-            "requete": {"nom": nom, "type": typ, "annee": annee},
+            "requete": {"nom": nom, "type": typ, "annee": annee, "pays": pays},
             "date": dt_util.now().isoformat(),
         }
         await self._async_commit()

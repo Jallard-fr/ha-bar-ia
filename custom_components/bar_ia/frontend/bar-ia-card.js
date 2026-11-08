@@ -7,7 +7,7 @@
  * avant insertion dans le DOM.
  */
 (() => {
-  const VERSION = "2.1.0";
+  const VERSION = "2.2.0";
   if (customElements.get("bar-ia-card")) return;
 
   const esc = (v) =>
@@ -40,6 +40,12 @@
   const VERDICT = {
     acheter: ["✅", "Acheter"], attendre: ["⏳", "Attendre"], eviter: ["⛔", "Éviter"],
   };
+  const EDIT_FIELDS = [
+    ["nom", "Nom"], ["type", "Type"], ["annee", "Année"], ["origine", "Origine (pays / région)"],
+    ["marque_distillerie", "Marque / distillerie"], ["abv", "ABV (%)"], ["volume_ml", "Volume (mL)"],
+    ["prix_moyen", "Prix (€)"], ["corps_cocktail", "Corps cocktail (léger / moyen / puissant)"],
+    ["profil_aromatique", "Profil aromatique", true], ["cocktails", "Cocktails conseillés", true],
+  ];
   const CRITERIA = [["nez", "Nez"], ["bouche", "Bouche"], ["finale", "Finale"], ["qualite_prix", "Qualité/prix"]];
   const TYPES = ["Aucun", "Rhum", "Gin", "Vodka", "Whisky", "Tequila / Mezcal", "Liqueur", "Vin"];
 
@@ -53,6 +59,7 @@
       this._form = { coef_sucre_ml_par_g: 0.62, quantite: 1 };
       this._tab = null;
       this._selected = null; // id bouteille sélectionnée (Mon bar)
+      this._editing = null; // id bouteille en cours de modification
       this._cell = null; // case sélectionnée (Plan)
       this._unsub = null;
     }
@@ -217,6 +224,7 @@
           ${this._input("nom", "Nom du spiritueux", { wide: true, ph: "ex. Diplomatico Reserva" })}
           ${this._input("type", "Type", { ph: "Rhum, Gin…" })}
           ${this._input("annee", "Année (optionnel)", { max: 20 })}
+          ${this._input("pays", "Pays d'origine (optionnel)", { max: 100, ph: "Guadeloupe, Écosse…" })}
           <label class="chk wide"><input type="checkbox" data-f="maison" ${maison ? "checked" : ""}> 🏠 Bouteille maison (calcul sans IA)</label>
           ${maison ? `
             ${this._input("base_utilisee", "Base utilisée", { max: 50 })}
@@ -254,7 +262,8 @@
               <button class="ic" data-adj="${esc(s.id)}" data-delta="1" title="Ajouter">+</button>
             </div>
           </div>
-          ${s.id === this._selected ? `${this._renderFiche(s.fiche, s.fiche.maison)}
+          ${s.id === this._selected ? `${this._editing === s.id ? this._renderEdit(s) : `${this._renderFiche(s.fiche, s.fiche.maison)}
+            <div class="actions"><button data-act="edit" data-sid="${esc(s.id)}">✏️ Modifier les informations</button></div>`}
             ${this._renderTastings(s)}
             <div class="actions"><button class="danger" data-del="${esc(s.id)}">🗑️ Supprimer cette bouteille</button></div>` : ""}`).join("")
         : `<div class="muted">Le bar est vide. Utilisez l'onglet Recherche pour ajouter une bouteille.</div>`;
@@ -268,6 +277,21 @@
         </div>
         <div class="chips">${cats}</div>
         <div class="list">${list}</div>`;
+    }
+
+    _renderEdit(s) {
+      return `<div class="fiche">
+        <div class="fname">✏️ Modifier — ${esc(val(s.fiche.nom))}</div>
+        <div class="grid">
+          ${EDIT_FIELDS.map(([k, l, wide]) => wide
+            ? `<label class="f wide"><span>${esc(l)}</span><textarea data-f="e_${k}" maxlength="1000" rows="3">${esc(this._form[`e_${k}`] ?? "")}</textarea></label>`
+            : this._input(`e_${k}`, l, { max: 1000 })).join("")}
+        </div>
+        <div class="actions">
+          <button class="primary" data-act="save-edit" data-sid="${esc(s.id)}">Enregistrer</button>
+          <button data-act="cancel-edit">Annuler</button>
+        </div>
+      </div>`;
     }
 
     _renderTastings(s) {
@@ -452,6 +476,7 @@
         el.addEventListener("click", (e) => {
           if (e.target.closest("button")) return;
           this._selected = this._selected === el.dataset.sel ? null : el.dataset.sel;
+          this._editing = null;
           this._render();
         })
       );
@@ -500,7 +525,7 @@
       switch (act) {
         case "search": {
           if (!this._txt("nom")) { this._error = "Indiquez le nom du spiritueux."; return this._render(); }
-          const data = { nom: this._txt("nom"), type: this._txt("type"), annee: this._txt("annee"), maison: !!f.maison };
+          const data = { nom: this._txt("nom"), type: this._txt("type"), annee: this._txt("annee"), pays: this._txt("pays"), maison: !!f.maison };
           if (f.maison) {
             data.base_utilisee = this._txt("base_utilisee");
             data.ingredients = this._txt("ingredients");
@@ -542,6 +567,35 @@
         }
         case "audit":
           return this._call("audit");
+        case "edit": {
+          const sp = this._spirit(ds.sid);
+          if (!sp) return;
+          for (const [k] of EDIT_FIELDS) {
+            const v = val(sp.fiche[k]);
+            this._form[`e_${k}`] = v === undefined || v === null || v === "-" ? "" : String(v);
+          }
+          this._editing = sp.id;
+          return this._render();
+        }
+        case "cancel-edit":
+          this._editing = null;
+          return this._render();
+        case "save-edit": {
+          const sp = this._spirit(ds.sid);
+          if (!sp) return;
+          if (!this._txt("e_nom")) { this._error = "Le nom ne peut pas être vide."; return this._render(); }
+          const data = { spirit_id: sp.id };
+          for (const [k] of EDIT_FIELDS) {
+            const nv = this._txt(`e_${k}`) || "-";
+            const ov = val(sp.fiche[k]);
+            if (String(ov ?? "-") !== nv) data[k] = nv;
+          }
+          if (Object.keys(data).length === 1) { this._editing = null; return this._render(); }
+          return this._call("update_spirit", data).then(() => {
+            if (!this._error) this._editing = null;
+            this._render();
+          });
+        }
         case "taste": {
           const data = { spirit_id: ds.sid, commentaire: this._txt("t_commentaire") };
           let any = false;
