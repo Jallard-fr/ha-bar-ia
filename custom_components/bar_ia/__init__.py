@@ -90,7 +90,10 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
         }
     ),
     "set_image_url": vol.Schema(
-        {vol.Required("spirit_id"): _SPIRIT_ID, vol.Required("url"): vol.All(cv.string, vol.Length(max=2000))}
+        {
+            vol.Optional("spirit_id"): _SPIRIT_ID,
+            vol.Required("url"): vol.All(cv.string, vol.Length(max=8_200_000)),
+        }
     ),
     "remove_image": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
     "find_image": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
@@ -129,7 +132,7 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
     "clear_result": vol.Schema(
         {
             vol.Required("resultat"): vol.In(
-                ["search", "cocktail", "audit", "purchase", *(f"profil_{c}" for c in CATEGORIES)]
+                ["search", "cocktail", "audit", "purchase", "last_job", *(f"profil_{c}" for c in CATEGORIES)]
             )
         }
     ),
@@ -234,7 +237,7 @@ def _register_services(hass: HomeAssistant) -> None:
             case "adjust_stock":
                 await manager.async_adjust_stock(d["spirit_id"], d["delta"])
             case "set_image_url":
-                await manager.async_set_image_url(d["spirit_id"], d["url"])
+                await manager.async_set_image_url(d.get("spirit_id"), d["url"])
             case "remove_image":
                 await manager.async_remove_image(d["spirit_id"])
             case "find_image":

@@ -146,3 +146,57 @@ async def test_bulk_missing_images(hass: HomeAssistant, ai_calls, aioclient_mock
     # Bouteille par bouteille
     del m.spirits["a"]["image"]
     assert (await _svc(hass, "find_image", {"spirit_id": "a"}, response=True)) == {"trouvee": True}
+
+
+async def test_redirects_and_data_uri(hass: HomeAssistant, aioclient_mock) -> None:
+    aioclient_mock.get("https://site.fr/r", status=302, headers={"Location": "/img.png"})
+    aioclient_mock.get("https://site.fr/img.png", content=_png(), headers={"Content-Type": "image/png"})
+    assert (await image_finder.download(hass, "https://site.fr/r")).startswith(b"\xff\xd8\xff")
+    # Redirection piégée vers le réseau local : refusée
+    aioclient_mock.get("https://site.fr/piege", status=302, headers={"Location": "https://192.168.1.1/admin.png"})
+    with pytest.raises(ImageError, match="Hôte"):
+        await image_finder.download(hass, "https://site.fr/piege")
+    aioclient_mock.get("https://site.fr/http", status=301, headers={"Location": "http://site.fr/a.png"})
+    with pytest.raises(ImageError):
+        await image_finder.download(hass, "https://site.fr/http")
+    # Image copiée depuis Google Images sous forme data:
+    import base64
+    uri = "data:image/png;base64," + base64.b64encode(_png()).decode()
+    assert (await image_finder.download(hass, uri)).startswith(b"\xff\xd8\xff")
+    with pytest.raises(ImageError):
+        await image_finder.download(hass, "data:text/html;base64,PGh0bWw+")
+
+
+async def test_search_image_from_link_and_stats(hass: HomeAssistant, ai_calls, aioclient_mock, tmp_path) -> None:
+    hass.config.config_dir = str(tmp_path)
+    _, responses = ai_calls
+    _off(aioclient_mock, [])
+    aioclient_mock.get(IMG_OK, content=_png(), headers={"Content-Type": "image/png"})
+    responses["fiche"] = json.dumps(FICHE)
+    entry = await _setup(hass, ai_calls)
+    m = entry.runtime_data
+
+    async def ai(task, instructions, attachments=None, internal=False):
+        if task == "image_urls":
+            return {"images": []}
+        if task == "verify":
+            return {"correspond": False, "confiance": 10}
+        return json.loads(responses["fiche"])
+
+    m._async_ai = ai
+    await _svc(hass, "search", {"nom": "Diplomatico"})
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert m.snapshot()["search"]["image"] is None
+
+    # Image choisie sur Google Images pour le résultat de recherche
+    await _svc(hass, "set_image_url", {"url": IMG_OK})
+    assert m.snapshot()["search"]["image"]["source"] == IMG_OK
+    sid = (await _svc(hass, "add_to_inventory", response=True))["spirit_id"]
+    assert m.spirits[sid]["image"]["source"] == IMG_OK
+
+    # Bilan : aucune image dans les bases gratuites
+    del m.spirits[sid]["image"]
+    assert (await _svc(hass, "find_image", {"spirit_id": sid}, response=True)) == {"trouvee": False}
+    assert m.snapshot()["last_job"]["sans_candidat"] == 1
+    await _svc(hass, "clear_result", {"resultat": "last_job"})
+    assert m.snapshot()["last_job"] is None

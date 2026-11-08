@@ -84,6 +84,8 @@ class BarManager:
         self.search_photo: bytes | None = None
         self.photo_entity_id: str | None = None
         self.job: dict[str, Any] | None = None
+        self.last_job: dict[str, Any] | None = None
+        self._find_stats: dict[str, int] = {}
         self._job_cancel = False
         self._search_image_task: asyncio.Task | None = None
         self._search_added_sid: str | None = None
@@ -164,6 +166,7 @@ class BarManager:
             "status": self.status,
             "running_task": self.running_task,
             "job": self.job,
+            "last_job": self.last_job,
             "last_error": self.last_error,
             "ai_entity": self.ai_entity,
             "layout": dict(self.data["layout"]),
@@ -211,17 +214,32 @@ class BarManager:
         info["image"] = {"type": "local", "v": int(dt_util.utcnow().timestamp())}
         await self._async_commit()
 
-    async def async_set_image_url(self, sid: str, url: str) -> None:
-        """Associe une image web (https) ou retire l'image si l'adresse est vide."""
-        info = self._require_spirit(sid)
+    async def async_set_image_url(self, sid: str | None, url: str) -> None:
+        """Télécharge l'image collée (https ou data:image) et la stocke localement.
+
+        sid absent : image du résultat de recherche en cours. Adresse vide : retire l'image.
+        """
         url = (url or "").strip()
-        if not url:
-            await self.async_remove_image(sid)
-            return
-        if not valid_url(url):
-            raise self._image_error(ImageError("Adresse https:// attendue"))
-        await self.images.async_delete(sid)
-        info["image"] = {"type": "url", "url": url}
+        if sid is None:
+            search = self.data.get("search")
+            if not search:
+                raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_search")
+        else:
+            info = self._require_spirit(sid)
+            if not url:
+                await self.async_remove_image(sid)
+                return
+        if not url.lower().startswith(("https://", "data:image/")):
+            raise self._image_error(ImageError("Collez l'adresse de l'image (https://…)"))
+        try:
+            jpeg = await image_finder.download(self.hass, url)
+        except ImageError as err:
+            raise self._image_error(err) from err
+        source = url if url.lower().startswith("https://") else "copie"
+        if sid is None:
+            search["image"] = await self._async_store_found(SEARCH_IMAGE, (jpeg, source))
+        else:
+            info["image"] = await self._async_store_found(sid, (jpeg, source))
         await self._async_commit()
 
     async def async_remove_image(self, sid: str) -> None:
@@ -364,6 +382,10 @@ class BarManager:
         await self._async_commit()
 
     async def async_clear_result(self, kind: str) -> None:
+        if kind == "last_job":
+            self.last_job = None
+            self._notify()
+            return
         if kind.startswith("profil_"):
             if self.data["profils"].pop(kind.removeprefix("profil_"), None) is not None:
                 await self._async_commit()
@@ -562,6 +584,7 @@ class BarManager:
 
     async def _async_find_image(self, q: dict, ai_urls: list[str] | None = None) -> tuple[bytes, str] | None:
         """Cherche, télécharge et fait vérifier une image ; renvoie (jpeg, adresse source)."""
+        stats = self._find_stats = {"candidats": 0, "refusees": 0}
         text = logic.image_search_text(q)
         if not text:
             return None
@@ -570,8 +593,9 @@ class BarManager:
 
         async def _try(cands: list[image_finder.Candidate]) -> tuple[bytes, str] | None:
             nonlocal ai_failures
+            verified = stats["refusees"]
             for cand in cands:
-                if self._job_cancel or cand.url in tried or len(tried) >= 6:
+                if self._job_cancel or cand.url in tried or len(tried) >= 6 or verified >= 3:
                     continue
                 tried.add(cand.url)
                 try:
@@ -579,9 +603,13 @@ class BarManager:
                 except ImageError as err:
                     _LOGGER.debug("Image écartée %s : %s", cand.url, err)
                     continue
+                stats["candidats"] += 1
                 try:
+                    verified += 1
                     if await self._async_verify(q, jpeg):
                         return jpeg, cand.url
+                    stats["refusees"] += 1
+                    _LOGGER.debug("Image refusée par l'IA : %s", cand.url)
                 except HomeAssistantError:
                     ai_failures += 1
                     if ai_failures >= 2:
@@ -647,6 +675,13 @@ class BarManager:
             if found and sid in self.spirits:
                 self.spirits[sid]["image"] = await self._async_store_found(sid, found)
                 await self._async_commit()
+            self.last_job = {
+                "total": 1,
+                "trouvees": int(bool(found)),
+                "sans_candidat": int(not self._find_stats.get("candidats")),
+                "refusees": self._find_stats.get("refusees", 0),
+                "date": dt_util.now().isoformat(),
+            }
             return bool(found)
         finally:
             self.job = None
@@ -661,7 +696,10 @@ class BarManager:
         ]
         if not targets:
             return {"total": 0}
-        self.job = {"type": "images", "label": "", "total": len(targets), "fait": 0, "trouvees": 0}
+        self.job = {
+            "type": "images", "label": "", "total": len(targets), "fait": 0, "trouvees": 0,
+            "sans_candidat": 0, "refusees": 0,
+        }
         self._job_cancel = False
         self._notify()
         self.hass.async_create_background_task(self._async_images_job(targets), "bar_ia_images")
@@ -687,6 +725,10 @@ class BarManager:
                     self.spirits[sid]["image"] = await self._async_store_found(sid, found)
                     self.job["trouvees"] += 1
                     await self._async_commit()
+                elif not self._find_stats.get("candidats"):
+                    self.job["sans_candidat"] += 1
+                else:
+                    self.job["refusees"] += 1
                 self.job["fait"] += 1
                 self._notify()
                 await asyncio.sleep(JOB_DELAY)  # ménage le quota de l'IA
@@ -695,6 +737,9 @@ class BarManager:
         finally:
             done = self.job or {}
             _LOGGER.info("Images trouvées : %s / %s", done.get("trouvees"), done.get("total"))
+            self.last_job = {
+                k: done.get(k, 0) for k in ("total", "fait", "trouvees", "sans_candidat", "refusees")
+            } | {"date": dt_util.now().isoformat()}
             self.job = None
             self._notify()
 
