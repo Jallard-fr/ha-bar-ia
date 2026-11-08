@@ -44,6 +44,7 @@ from .const import (
     VERSION,
 )
 from .frontend_resource import async_register_card_resource
+from .logic import CATEGORIES, TASTING_CRITERIA
 from .manager import BarManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ _TEXT = vol.All(cv.string, vol.Length(max=255))
 _SPIRIT_ID = vol.All(cv.string, vol.Length(min=1, max=64))
 _CELL = vol.All(cv.string, vol.Match(r"^[Ee]\d{1,2}-\d{1,2}$"))
 _POS = vol.All(vol.Coerce(float), vol.Range(min=0, max=100000))
+_NOTE = vol.All(vol.Coerce(float), vol.Range(min=0, max=10))
 
 SERVICE_SCHEMAS: dict[str, vol.Schema] = {
     "search": vol.Schema(
@@ -110,8 +112,27 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
         }
     ),
     "clear_result": vol.Schema(
-        {vol.Required("resultat"): vol.In(["search", "cocktail", "audit", "purchase"])}
+        {
+            vol.Required("resultat"): vol.In(
+                ["search", "cocktail", "audit", "purchase", *(f"profil_{c}" for c in CATEGORIES)]
+            )
+        }
     ),
+    "add_tasting": vol.Schema(
+        {
+            vol.Required("spirit_id"): _SPIRIT_ID,
+            **{vol.Optional(c): vol.Any(None, _NOTE) for c in TASTING_CRITERIA},
+            vol.Optional("commentaire", default=""): vol.All(cv.string, vol.Length(max=1000)),
+            vol.Optional("date"): cv.date,
+        }
+    ),
+    "delete_tasting": vol.Schema(
+        {
+            vol.Required("spirit_id"): _SPIRIT_ID,
+            vol.Required("degustation_id"): vol.All(cv.string, vol.Length(min=1, max=32)),
+        }
+    ),
+    "taste_profile": vol.Schema({vol.Optional("categorie", default="rhum"): vol.In(list(CATEGORIES))}),
     "place": vol.Schema({vol.Required("case"): _CELL, vol.Required("spirit_id"): _SPIRIT_ID}),
     "clear_cell": vol.Schema({vol.Required("case"): _CELL}),
     "autofill": vol.Schema({}),
@@ -125,7 +146,16 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
     "import_legacy": vol.Schema({vol.Optional("force", default=False): cv.boolean}),
 }
 
-RESPONSE_SERVICES = {"search", "add_to_inventory", "cocktail", "audit", "purchase_check", "import_legacy"}
+RESPONSE_SERVICES = {
+    "search",
+    "add_to_inventory",
+    "cocktail",
+    "audit",
+    "purchase_check",
+    "import_legacy",
+    "add_tasting",
+    "taste_profile",
+}
 
 
 def _get_manager(hass: HomeAssistant) -> BarManager:
@@ -208,6 +238,16 @@ def _register_services(hass: HomeAssistant) -> None:
                 await manager.async_empty_plan()
             case "set_layout":
                 await manager.async_set_layout(d["etageres"], d["colonnes"])
+            case "add_tasting":
+                params = {c: d.get(c) for c in TASTING_CRITERIA}
+                params["commentaire"] = d["commentaire"]
+                if d.get("date"):
+                    params["date"] = d["date"].isoformat()
+                result = await manager.async_add_tasting(d["spirit_id"], params)
+            case "delete_tasting":
+                await manager.async_delete_tasting(d["spirit_id"], d["degustation_id"])
+            case "taste_profile":
+                result = await manager.async_taste_profile(d["categorie"])
             case "import_legacy":
                 result = await manager.async_import_legacy(force=d["force"])
         if call.service in RESPONSE_SERVICES and call.return_response:

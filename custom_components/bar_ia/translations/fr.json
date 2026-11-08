@@ -105,6 +105,15 @@
     "ai_failed": {
       "message": "La tâche IA a échoué : {error}"
     },
+    "tasting_empty": {
+      "message": "Notez au moins un critère (0 à 10)."
+    },
+    "unknown_tasting": {
+      "message": "Dégustation inconnue : {tasting_id}"
+    },
+    "no_tastings": {
+      "message": "Aucune dégustation notée pour : {categorie}"
+    },
     "empty_bar": {
       "message": "Le bar est vide : ajoutez des bouteilles avant l'analyse."
     }
@@ -271,7 +280,7 @@
       "fields": {
         "resultat": {
           "name": "Résultat",
-          "description": "search, cocktail, audit ou purchase."
+          "description": "search, cocktail, audit, purchase ou profil_<catégorie>."
         }
       }
     },
@@ -320,6 +329,64 @@
         "colonnes": {
           "name": "Colonnes",
           "description": "Nombre de colonnes (1-12)."
+        }
+      }
+    },
+    "add_tasting": {
+      "name": "Ajouter une dégustation",
+      "description": "Note une bouteille (Nez, Bouche, Finale, Rapport qualité/prix sur 10) avec un commentaire.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        },
+        "nez": {
+          "name": "Nez",
+          "description": "Note du nez sur 10."
+        },
+        "bouche": {
+          "name": "Bouche",
+          "description": "Note de la bouche sur 10."
+        },
+        "finale": {
+          "name": "Finale",
+          "description": "Note de la finale sur 10."
+        },
+        "qualite_prix": {
+          "name": "Rapport qualité/prix",
+          "description": "Note du rapport qualité/prix sur 10."
+        },
+        "commentaire": {
+          "name": "Commentaire",
+          "description": "Vos impressions."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Date de dégustation (aujourd'hui par défaut)."
+        }
+      }
+    },
+    "delete_tasting": {
+      "name": "Supprimer une dégustation",
+      "description": "Supprime une dégustation de l'historique.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        },
+        "degustation_id": {
+          "name": "Dégustation",
+          "description": "Identifiant de la dégustation."
+        }
+      }
+    },
+    "taste_profile": {
+      "name": "Synthèse de mes dégustations",
+      "description": "L'IA synthétise vos appréciations d'un type d'alcool en profil de goût ; l'avis d'achat l'utilise ensuite.",
+      "fields": {
+        "categorie": {
+          "name": "Catégorie",
+          "description": "rhum, whisky, gin, vodka, tequila_mezcal, liqueurs, vin ou autres."
         }
       }
     },

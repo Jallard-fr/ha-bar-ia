@@ -42,6 +42,7 @@ AI_TASK_NAMES = {
     "cocktail": "bar_ia accord du barman",
     "audit": "bar_ia audit du bar",
     "purchase": "bar_ia opportunite achat",
+    "profile": "bar_ia profil de degustation",
 }
 
 
@@ -54,6 +55,7 @@ def _default_data() -> dict[str, Any]:
         "cocktail": None,
         "audit": None,
         "purchase": None,
+        "profils": {},
         "migrated": False,
     }
 
@@ -85,6 +87,8 @@ class BarManager:
             data["spirits"] = {}
         if not isinstance(data["plan"], dict):
             data["plan"] = {}
+        if not isinstance(data["profils"], dict):
+            data["profils"] = {}
         self.data = data
         self._sanitize_layout()
 
@@ -133,6 +137,7 @@ class BarManager:
                     "categorie": logic.category_for(info),
                     "maison": logic.is_maison(info),
                     "quantite": logic.quantity(info),
+                    "degustation": logic.tasting_summary(info),
                     "prix": logic.price(info),
                     "fiche": info,
                 }
@@ -153,6 +158,7 @@ class BarManager:
             "cocktail": self.data["cocktail"],
             "audit": self.data["audit"],
             "purchase": self.data["purchase"],
+            "profils": self.data["profils"],
         }
 
     def _require_spirit(self, sid: str) -> dict:
@@ -205,6 +211,54 @@ class BarManager:
         self.data["plan"] = logic.trim_placements(self.data["plan"], sid, info["nombre_bouteilles"])
         await self._async_commit()
 
+    async def async_add_tasting(self, sid: str, params: dict) -> dict:
+        """Ajoute une dégustation datée à une bouteille."""
+        info = self._require_spirit(sid)
+        date = params.get("date") or dt_util.now().date().isoformat()
+        try:
+            tasting = logic.make_tasting(params, uuid.uuid4().hex[:10], str(date))
+        except ValueError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="tasting_empty"
+            ) from err
+        items = [t for t in info.get("degustations", []) if isinstance(t, dict)]
+        items.append(tasting)
+        items.sort(key=lambda t: str(t.get("date", "")))
+        info["degustations"] = items[-logic.MAX_TASTINGS :]
+        await self._async_commit()
+        return tasting
+
+    async def async_delete_tasting(self, sid: str, tasting_id: str) -> None:
+        info = self._require_spirit(sid)
+        items = info.get("degustations") or []
+        kept = [t for t in items if not (isinstance(t, dict) and t.get("id") == tasting_id)]
+        if len(kept) == len(items):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_tasting",
+                translation_placeholders={"tasting_id": tasting_id},
+            )
+        info["degustations"] = kept
+        await self._async_commit()
+
+    async def async_taste_profile(self, category: str) -> dict:
+        """Synthèse IA de toutes les dégustations d'une catégorie."""
+        rated = logic.rated_spirits(self.spirits, category)
+        if not rated:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_tastings",
+                translation_placeholders={"categorie": logic.CATEGORY_LABELS.get(category, category)},
+            )
+        prompt = logic.prompt_taste_profile(category, rated)
+        result = logic.normalize_profile(await self._async_ai("profile", prompt))
+        result["categorie"] = category
+        result["nb_bouteilles"] = len(rated)
+        result["date"] = dt_util.now().isoformat()
+        self.data["profils"][category] = result
+        await self._async_commit()
+        return result
+
     async def async_delete(self, sid: str) -> None:
         """Supprime une référence et ses emplacements."""
         self._require_spirit(sid)
@@ -217,6 +271,10 @@ class BarManager:
         await self._async_commit()
 
     async def async_clear_result(self, kind: str) -> None:
+        if kind.startswith("profil_"):
+            if self.data["profils"].pop(kind.removeprefix("profil_"), None) is not None:
+                await self._async_commit()
+            return
         if kind in ("cocktail", "audit", "purchase", "search"):
             self.data[kind] = None
             await self._async_commit()
@@ -366,7 +424,11 @@ class BarManager:
         self, nom: str, typ: str, prix: float | None, budget: float | None
     ) -> dict:
         nom = logic.clean_text(nom)
-        prompt = logic.prompt_purchase(nom, logic.clean_text(typ), prix, budget, self.spirits)
+        typ = logic.clean_text(typ)
+        profil = self.data["profils"].get(logic.category_for({"type": typ})) if typ else None
+        if profil:
+            profil = {k: v for k, v in profil.items() if k not in ("classement", "date")}
+        prompt = logic.prompt_purchase(nom, typ, prix, budget, self.spirits, profil)
         result = logic.normalize_purchase(await self._async_ai("purchase", prompt))
         result["bouteille"] = nom
         result["prix_propose"] = prix

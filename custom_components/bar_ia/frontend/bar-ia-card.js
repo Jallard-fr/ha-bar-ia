@@ -7,7 +7,7 @@
  * avant insertion dans le DOM.
  */
 (() => {
-  const VERSION = "2.0.1";
+  const VERSION = "2.1.0";
   if (customElements.get("bar-ia-card")) return;
 
   const esc = (v) =>
@@ -40,6 +40,7 @@
   const VERDICT = {
     acheter: ["✅", "Acheter"], attendre: ["⏳", "Attendre"], eviter: ["⛔", "Éviter"],
   };
+  const CRITERIA = [["nez", "Nez"], ["bouche", "Bouche"], ["finale", "Finale"], ["qualite_prix", "Qualité/prix"]];
   const TYPES = ["Aucun", "Rhum", "Gin", "Vodka", "Whisky", "Tequila / Mezcal", "Liqueur", "Vin"];
 
   class BarIACard extends HTMLElement {
@@ -246,7 +247,7 @@
       const list = d.spirits.length
         ? d.spirits.map((s) => `
           <div class="row ${s.id === this._selected ? "sel" : ""}" data-sel="${esc(s.id)}">
-            <div class="lbl">${esc(s.label)}<div class="sub">${esc(val(s.fiche.type) || "")}${s.prix ? " · " + esc(fmtEur(s.prix)) : ""}</div></div>
+            <div class="lbl">${esc(s.label)}<div class="sub">${esc(val(s.fiche.type) || "")}${s.prix ? " · " + esc(fmtEur(s.prix)) : ""}${s.degustation ? ` · <span class="note">★ ${esc(s.degustation.note)}/10</span> (${esc(s.degustation.nb)})` : ""}</div></div>
             <div class="qty">
               <button class="ic" data-adj="${esc(s.id)}" data-delta="-1" title="Retirer">−</button>
               <b>${esc(s.quantite)}</b>
@@ -254,6 +255,7 @@
             </div>
           </div>
           ${s.id === this._selected ? `${this._renderFiche(s.fiche, s.fiche.maison)}
+            ${this._renderTastings(s)}
             <div class="actions"><button class="danger" data-del="${esc(s.id)}">🗑️ Supprimer cette bouteille</button></div>` : ""}`).join("")
         : `<div class="muted">Le bar est vide. Utilisez l'onglet Recherche pour ajouter une bouteille.</div>`;
       return `
@@ -266,6 +268,55 @@
         </div>
         <div class="chips">${cats}</div>
         <div class="list">${list}</div>`;
+    }
+
+    _renderTastings(s) {
+      const list = (s.fiche.degustations || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      const crit = (t) => CRITERIA.filter(([k]) => t[k] !== null && t[k] !== undefined)
+        .map(([k, l]) => `${esc(l)} ${esc(t[k])}`).join(" · ");
+      const g = s.degustation;
+      return `<div class="fiche tasting">
+        <div class="fname">🍷 Dégustations${g ? ` — <span class="note">★ ${esc(g.note)}/10</span> <span class="sub">(${esc(g.nb)})</span>` : ""}</div>
+        ${g ? `<div class="sub">Moyennes : ${crit(g)}</div>` : ""}
+        ${list.map((t) => `<div class="trow">
+            <div><b>${esc(t.date)}</b> · <span class="note">★ ${esc(t.globale)}</span> <span class="sub">${crit(t)}</span>
+            ${t.commentaire ? `<div>${esc(t.commentaire)}</div>` : ""}</div>
+            <button class="ic" data-deltaste="${esc(t.id)}" data-sid="${esc(s.id)}" title="Supprimer">✕</button>
+          </div>`).join("")}
+        <div class="grid">
+          ${CRITERIA.map(([k, l]) => this._input(`t_${k}`, `${l} /10`, { type: "number", step: 0.5, min: 0 })).join("")}
+          ${this._input("t_date", "Date", { type: "date" })}
+          <label class="f wide"><span>Commentaire</span><textarea data-f="t_commentaire" maxlength="1000" rows="2">${esc(this._form.t_commentaire || "")}</textarea></label>
+        </div>
+        <div class="actions"><button class="primary" data-act="taste" data-sid="${esc(s.id)}">Enregistrer la dégustation</button></div>
+      </div>`;
+    }
+
+    _renderProfile(d) {
+      const cat = this._form.prof_cat || "rhum";
+      const rated = d.spirits.filter((s) => s.categorie === cat && s.degustation)
+        .sort((a, b) => b.degustation.note - a.degustation.note);
+      const p = (d.profils || {})[cat];
+      const ul = (t, arr) => (arr?.length ? `<h4>${esc(t)}</h4><ul>${arr.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "");
+      return `
+        <h3>🍷 Mes dégustations</h3>
+        <div class="grid">${this._select("prof_cat", "Type", Object.entries(CAT_LABEL), false)}</div>
+        ${rated.length ? `<table class="rank">
+            <tr><th>#</th><th>Bouteille</th><th>Note</th></tr>
+            ${rated.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.label)}</td><td class="note">★ ${esc(s.degustation.note)} <span class="sub">(${esc(s.degustation.nb)})</span></td></tr>`).join("")}
+          </table>
+          <div class="actions"><button class="primary" data-act="profile" ${d.status === "en_cours" ? "disabled" : ""}>Synthétiser mes goûts (${esc(CAT_LABEL[cat])})</button></div>`
+          : `<div class="muted">Aucune dégustation notée pour ce type. Notez vos bouteilles depuis l'onglet Mon bar.</div>`}
+        ${p ? `<div class="fiche">
+          <div class="fname">Profil de goût — ${esc(CAT_LABEL[cat])} <span class="sub">(${esc(p.nb_bouteilles)} bouteilles)</span></div>
+          ${p.resume ? `<p>${esc(p.resume)}</p>` : ""}
+          <div class="cols2"><div>${ul("J'aime", p.aime)}</div><div>${ul("J'aime moins", p.aime_pas)}</div></div>
+          <div class="cols2"><div>${ul("Styles préférés", p.styles_preferes)}</div><div>${ul("Origines préférées", p.origines_preferees)}</div></div>
+          ${ul("Pistes d'achat", p.pistes_achat)}
+          ${ul("À éviter", p.a_eviter)}
+          <div class="sub">Utilisé automatiquement par « Vérifier l'opportunité » pour ce type.</div>
+          <div class="actions"><button data-act="clear" data-kind="profil_${esc(cat)}">Effacer</button></div>
+        </div>` : ""}`;
     }
 
     _renderPlan(d) {
@@ -346,6 +397,7 @@
       const ul = (t, arr) => (arr?.length ? `<h4>${esc(t)}</h4><ul>${arr.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "");
       const v = p ? VERDICT[p.verdict] || ["", p.verdict] : null;
       return `
+        ${this._renderProfile(d)}
         <h3>📊 Stratégie du bar</h3>
         <div class="actions"><button class="primary" data-act="audit" ${d.status === "en_cours" ? "disabled" : ""}>Analyser mon bar</button></div>
         ${a ? `<div class="fiche">
@@ -367,6 +419,7 @@
         ${p ? `<div class="fiche">
           <div class="fname">${esc(v[0])} ${esc(v[1])} — ${esc(p.bouteille)}${p.score !== null ? ` <span class="chip">${esc(p.score)}/10</span>` : ""}</div>
           ${p.raison ? `<p>${esc(p.raison)}</p>` : ""}
+          ${p.adequation_gouts && p.adequation_gouts !== "-" ? `<p>🍷 <b>Vos goûts :</b> ${esc(p.adequation_gouts)}</p>` : ""}
           <table>
             ${p.prix_estime ? `<tr><th>Prix estimé</th><td>${esc(p.prix_estime)}</td></tr>` : ""}
             ${p.doublon && p.doublon !== "-" ? `<tr><th>Doublon</th><td>${esc(p.doublon)}</td></tr>` : ""}
@@ -420,6 +473,12 @@
         b.addEventListener("click", () => {
           this._cell = this._cell === b.dataset.cell ? null : b.dataset.cell;
           this._render();
+        })
+      );
+      root.querySelectorAll("[data-deltaste]").forEach((b) =>
+        b.addEventListener("click", () => {
+          if (confirm("Supprimer cette dégustation ?"))
+            this._call("delete_tasting", { spirit_id: b.dataset.sid, degustation_id: b.dataset.deltaste });
         })
       );
       root.querySelectorAll("[data-act]").forEach((b) =>
@@ -483,6 +542,26 @@
         }
         case "audit":
           return this._call("audit");
+        case "taste": {
+          const data = { spirit_id: ds.sid, commentaire: this._txt("t_commentaire") };
+          let any = false;
+          for (const [k] of CRITERIA) {
+            const n = this._num(`t_${k}`);
+            if (n !== undefined) {
+              if (n < 0 || n > 10) { this._error = "Les notes vont de 0 à 10."; return this._render(); }
+              data[k] = n;
+              any = true;
+            }
+          }
+          if (!any) { this._error = "Notez au moins un critère (0 à 10)."; return this._render(); }
+          if (this._txt("t_date")) data.date = this._txt("t_date");
+          return this._call("add_tasting", data).then(() => {
+            if (!this._error) for (const k of ["t_nez", "t_bouche", "t_finale", "t_qualite_prix", "t_commentaire", "t_date"]) delete this._form[k];
+            this._render();
+          });
+        }
+        case "profile":
+          return this._call("taste_profile", { categorie: f.prof_cat || "rhum" });
         case "purchase": {
           if (!this._txt("p_nom")) { this._error = "Indiquez la bouteille envisagée."; return this._render(); }
           const data = { nom: this._txt("p_nom"), type: this._txt("p_type") };
@@ -551,6 +630,10 @@
     h4 { margin:6px 0 2px; font-size:.95em; }
     ul, ol { margin:0; padding-left:20px; }
     details { margin-top:8px; }
+    .note { color: #c77c02; font-weight:600; }
+    .trow { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--divider-color, #e0e0e0); }
+    .f textarea { font: inherit; padding:6px 8px; border-radius:6px; border:1px solid var(--divider-color, #e0e0e0); background: var(--card-background-color, #fff); color: var(--primary-text-color, #212121); resize: vertical; }
+    table.rank th { width:auto; }
     summary { cursor:pointer; color:var(--secondary-text-color, #727272); }
   `;
 

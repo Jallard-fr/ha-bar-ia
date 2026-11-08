@@ -73,10 +73,10 @@ C'est tout : aucune ressource à déclarer, aucun fichier à copier.
 | Onglet | Fonction |
 | :--- | :--- |
 | 🔍 **Recherche** | Nom et type → fiche générée par l'IA (origine, distillerie, ABV, prix, profil aromatique, corps cocktail, cocktails conseillés). Cochez **Bouteille maison** pour calculer sans IA l'ABV, le volume, le coût, le prix conseillé et la marge. Puis **Ajouter au bar**. |
-| 🥃 **Mon bar** | Stock (+1 / −1), fiche détaillée, suppression, valorisation totale, maison/industriel, répartition par type. |
+| 🥃 **Mon bar** | Stock (+1 / −1), fiche détaillée, suppression, valorisation totale, maison/industriel, répartition par type. Pour chaque bouteille : **dégustations datées** notées sur 10 (Nez, Bouche, Finale, Rapport qualité/prix) avec commentaire ; la note affichée est la moyenne. |
 | 🗺️ **Plan** | Grille étagères × colonnes. Choisissez une bouteille puis cliquez une case pour la ranger. Remplissage automatique, vidage, changement de dimensions. |
 | 🍸 **Barman** | Cocktail proposé selon une bouteille, le type d'alcool, vos ingrédients et l'occasion. |
-| 📈 **Conseils** | **Analyse stratégique** du bar (score, forces, manques, achats recommandés) et **vérification d'une opportunité d'achat** (verdict, doublons, cocktails débloqués, respect du budget). |
+| 📈 **Conseils** | **Mes dégustations** : classement par type et **synthèse IA de vos goûts** (ce que vous aimez, styles et origines préférés, pistes d'achat). **Analyse stratégique** du bar (score, forces, manques, achats recommandés) et **vérification d'une opportunité d'achat** (verdict, adéquation à vos goûts d'après vos dégustations et votre profil, doublons, cocktails débloqués, respect du budget). |
 
 ### Entités créées
 
@@ -84,7 +84,7 @@ Capteurs : bouteilles, valeur du bar, bouteilles et valeur maison / industrielle
 
 ### Services (pour vos automatisations)
 
-`bar_ia.search`, `add_to_inventory`, `adjust_stock`, `set_stock`, `delete_spirit`, `cocktail`, `audit`, `purchase_check`, `clear_result`, `place`, `clear_cell`, `autofill`, `empty_plan`, `set_layout`, `import_legacy`.
+`bar_ia.search`, `add_to_inventory`, `adjust_stock`, `set_stock`, `delete_spirit`, `cocktail`, `audit`, `purchase_check`, `clear_result`, `place`, `clear_cell`, `autofill`, `empty_plan`, `set_layout`, `add_tasting`, `delete_tasting`, `taste_profile`, `import_legacy`.
 
 Les services IA renvoient leur résultat (`response_variable`) :
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "bar_ia"
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 
 STORAGE_KEY = f"{DOMAIN}.data"
 STORAGE_VERSION = 1
