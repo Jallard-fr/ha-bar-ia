@@ -756,13 +756,22 @@ def inventory_summary(spirits: dict, max_items: int = 150) -> list[dict]:
     return out
 
 
-def prompt_search(nom: str, typ: str, annee: str, pays: str = "") -> str:
-    """Prompt de fiche technique d'un spiritueux."""
+def prompt_search(nom: str, typ: str, annee: str, pays: str = "", photo: bool = False) -> str:
+    """Prompt de fiche technique d'un spiritueux (éventuellement à partir d'une photo)."""
+    photo_rule = (
+        "Une PHOTO de la bouteille est jointe : lis l'étiquette (nom exact, âge/année, type, "
+        "degré, volume, distillerie, pays) et identifie précisément la bouteille. Les DONNÉES "
+        "ci-dessous ne sont que des indices facultatifs. Si l'étiquette est illisible ou si ce "
+        "n'est pas une bouteille d'alcool, mets \"-\" dans nom."
+        if photo
+        else ""
+    )
     return "\n\n".join(
         [
             "Agis comme un barman expert et analyste de données spiritueux. "
             "Croise si possible : Difford's Guide, Liquor.com, Imbibe, Punch, Whisky Advocate, "
             "Rum Ratings, Gin Foundry, fiches distilleries.",
+            *([photo_rule] if photo else []),
             _GUARD,
             _data_block({"nom": nom, "type": typ, "annee": annee or "-", "pays_origine": pays or "-"}),
             "RÈGLES:\n"

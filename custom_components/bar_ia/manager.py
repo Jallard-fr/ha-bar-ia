@@ -27,6 +27,7 @@ from .const import (
     LEGACY_SUPERSENSOR,
     MAX_COLS,
     MAX_SHELVES,
+    SIGNAL_PHOTO,
     SIGNAL_UPDATED,
     STATUS_ERROR,
     STATUS_IDLE,
@@ -34,6 +35,7 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+from .images import SEARCH_IMAGE, ImageError, ImageStore, valid_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,6 +74,9 @@ class BarManager:
         self.status = STATUS_IDLE
         self.running_task: str | None = None
         self.last_error: str | None = None
+        self.images = ImageStore(hass)
+        self.search_photo: bytes | None = None
+        self.photo_entity_id: str | None = None
 
     # ------------------------------------------------------------------
     # Persistance
@@ -140,6 +145,7 @@ class BarManager:
                     "degustation": logic.tasting_summary(info),
                     "prix": logic.price(info),
                     "fiche": info,
+                    "image": self._image_view(sid, info.get("image")),
                 }
             )
         spirits.sort(key=lambda s: s["label"].lower())
@@ -154,12 +160,60 @@ class BarManager:
             "spirits": spirits,
             "stats": self.stats(),
             "plan_analysis": self.plan_analysis(),
-            "search": self.data["search"],
+            "search": (
+                {**self.data["search"], "image": self._image_view(SEARCH_IMAGE, self.data["search"].get("image"))}
+                if self.data["search"]
+                else None
+            ),
             "cocktail": self.data["cocktail"],
             "audit": self.data["audit"],
             "purchase": self.data["purchase"],
             "profils": self.data["profils"],
         }
+
+    @staticmethod
+    def _image_view(name: str, image: Any) -> dict | None:
+        """Ce que la carte doit afficher pour une image stockée."""
+        if not isinstance(image, dict):
+            return None
+        if image.get("type") == "url" and valid_url(str(image.get("url", ""))):
+            return {"type": "url", "url": image["url"]}
+        if image.get("type") == "local":
+            return {"type": "local", "path": f"/api/bar_ia/image/{name}.jpg?v={image.get('v', 0)}"}
+        return None
+
+    def _image_error(self, err: Exception) -> ServiceValidationError:
+        return ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_image",
+            translation_placeholders={"error": str(err)},
+        )
+
+    async def async_set_image_upload(self, sid: str, raw: bytes) -> None:
+        """Enregistre la photo (JPEG déjà contrôlé) d'une bouteille."""
+        info = self._require_spirit(sid)
+        await self.images.async_save(sid, raw)
+        info["image"] = {"type": "local", "v": int(dt_util.utcnow().timestamp())}
+        await self._async_commit()
+
+    async def async_set_image_url(self, sid: str, url: str) -> None:
+        """Associe une image web (https) ou retire l'image si l'adresse est vide."""
+        info = self._require_spirit(sid)
+        url = (url or "").strip()
+        if not url:
+            await self.async_remove_image(sid)
+            return
+        if not valid_url(url):
+            raise self._image_error(ImageError("Adresse https:// attendue"))
+        await self.images.async_delete(sid)
+        info["image"] = {"type": "url", "url": url}
+        await self._async_commit()
+
+    async def async_remove_image(self, sid: str) -> None:
+        info = self._require_spirit(sid)
+        await self.images.async_delete(sid)
+        if info.pop("image", None) is not None:
+            await self._async_commit()
 
     def _require_spirit(self, sid: str) -> dict:
         if sid not in self.spirits:
@@ -190,7 +244,12 @@ class BarManager:
         item["maison"] = search.get("maison") or {"est_maison": False}
         item["nombre_bouteilles"] = max(1, int(quantity))
         item["ajoute_le"] = dt_util.now().isoformat()
+        item.pop("image", None)
         sid = f"spirit_{uuid.uuid4().hex[:12]}"
+        if (search.get("image") or {}).get("type") == "local" and await self.images.async_copy(
+            SEARCH_IMAGE, sid
+        ):
+            item["image"] = {"type": "local", "v": int(dt_util.utcnow().timestamp())}
         self.spirits[sid] = item
         self.data["search"] = None
         await self._async_commit()
@@ -275,6 +334,7 @@ class BarManager:
         """Supprime une référence et ses emplacements."""
         self._require_spirit(sid)
         self.spirits.pop(sid)
+        await self.images.async_delete(sid)
         self.data["plan"] = {c: s for c, s in self.data["plan"].items() if s != sid}
         await self._async_commit()
 
@@ -333,7 +393,7 @@ class BarManager:
     # IA
     # ------------------------------------------------------------------
 
-    async def _async_ai(self, task: str, instructions: str) -> dict:
+    async def _async_ai(self, task: str, instructions: str, attachments: list[dict] | None = None) -> dict:
         """Appelle ai_task.generate_data et renvoie le JSON extrait."""
         if self.status == STATUS_RUNNING:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="ai_busy")
@@ -347,6 +407,8 @@ class BarManager:
         }
         if self.ai_entity:
             service_data["entity_id"] = self.ai_entity
+        if attachments:
+            service_data["attachments"] = attachments
         try:
             response = await self.hass.services.async_call(
                 "ai_task",
@@ -372,35 +434,61 @@ class BarManager:
         return result
 
     async def async_search(
-        self, nom: str, typ: str, annee: str, maison_params: dict | None, pays: str = ""
+        self,
+        nom: str,
+        typ: str,
+        annee: str,
+        maison_params: dict | None,
+        pays: str = "",
+        photo: bytes | None = None,
     ) -> dict:
-        """Génère une fiche (IA) ou calcule une fiche maison (sans IA)."""
+        """Génère une fiche (IA, éventuellement depuis une photo) ou une fiche maison (sans IA)."""
         nom = logic.clean_text(nom)
         typ = logic.clean_text(typ)
         annee = logic.clean_text(annee, 20)
         pays = logic.clean_text(pays, 100)
+        image = None
+        if photo is not None:
+            await self.images.async_save(SEARCH_IMAGE, photo)
+            self.search_photo = photo
+            async_dispatcher_send(self.hass, SIGNAL_PHOTO)
+            image = {"type": "local", "v": int(dt_util.utcnow().timestamp())}
         if maison_params is not None:
             maison = logic.compute_maison(maison_params)
             fiche = logic.build_maison_payload(nom, typ, annee, maison, pays)
         else:
-            raw = await self._async_ai("search", logic.prompt_search(nom, typ, annee, pays))
+            attachments = None
+            if photo is not None:
+                if not self.photo_entity_id:
+                    raise self._image_error(ImageError("Entité photo indisponible"))
+                attachments = [
+                    {
+                        "media_content_id": f"media-source://image/{self.photo_entity_id}",
+                        "media_content_type": "image/jpeg",
+                    }
+                ]
+            prompt = logic.prompt_search(nom, typ, annee, pays, photo=photo is not None)
+            raw = await self._async_ai("search", prompt, attachments)
             try:
                 fiche = logic.normalize_spirit(raw)
             except ValueError as err:
                 self.status = STATUS_ERROR
-                self.last_error = str(err)
+                self.last_error = (
+                    "Bouteille non reconnue sur la photo" if photo is not None else str(err)
+                )
                 self._notify()
                 raise HomeAssistantError(
                     translation_domain=DOMAIN,
                     translation_key="ai_failed",
-                    translation_placeholders={"error": str(err)},
+                    translation_placeholders={"error": self.last_error},
                 ) from err
             maison = {"est_maison": False}
         self.data["search"] = {
             "fiche": fiche,
             "maison": maison,
-            "requete": {"nom": nom, "type": typ, "annee": annee, "pays": pays},
+            "requete": {"nom": nom, "type": typ, "annee": annee, "pays": pays, "photo": photo is not None},
             "date": dt_util.now().isoformat(),
+            "image": image,
         }
         await self._async_commit()
         return self.data["search"]

@@ -30,6 +30,11 @@
     }
   },
   "entity": {
+    "image": {
+      "photo_recherche": {
+        "name": "Search photo"
+      }
+    },
     "sensor": {
       "bouteilles": {
         "name": "Bottles"
@@ -116,6 +121,9 @@
     },
     "empty_name": {
       "message": "Name cannot be empty."
+    },
+    "invalid_image": {
+      "message": "Image rejected: {error}"
     },
     "empty_bar": {
       "message": "The bar is empty: add bottles before analysing."
@@ -273,6 +281,30 @@
         "cocktails": {
           "name": "Cocktails",
           "description": ""
+        }
+      }
+    },
+    "set_image_url": {
+      "name": "Image from a web address",
+      "description": "Sets an https:// image for a bottle (empty address = remove).",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        },
+        "url": {
+          "name": "Image address",
+          "description": "Must start with https://."
+        }
+      }
+    },
+    "remove_image": {
+      "name": "Remove image",
+      "description": "Removes a bottle's image.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
         }
       }
     },
