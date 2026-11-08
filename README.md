@@ -56,13 +56,18 @@ Dans un tableau de bord : **Modifier › Ajouter une carte › Bar IA**, ou en Y
 type: custom:bar-ia-card
 ```
 
-Options facultatives :
+Options facultatives (aussi réglables dans l'éditeur visuel de la carte) :
 
 ```yaml
 type: custom:bar-ia-card
 title: "🥃 Mon bar"
-default_tab: bar   # recherche | bar | plan | barman | conseils
+default_tab: bar          # recherche | bar | plan | barman | conseils
+hidden_tabs:              # onglets à masquer
+  - plan
+  - barman
 ```
+
+**Pleine largeur** : dans une vue « Sections », la carte occupe toute la largeur de sa section. Pour qu'elle remplisse tout l'écran, placez-la seule dans une vue de type **Panneau** (Modifier la vue › Type de vue › Panneau).
 
 C'est tout : aucune ressource à déclarer, aucun fichier à copier.
 
