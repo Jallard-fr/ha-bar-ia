@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import shutil
 import uuid
 from copy import deepcopy
 from pathlib import Path
@@ -65,6 +66,7 @@ def _default_data() -> dict[str, Any]:
         "purchase": None,
         "profils": {},
         "migrated": False,
+        "copies": {},
     }
 
 
@@ -106,13 +108,98 @@ class BarManager:
             data["plan"] = {}
         if not isinstance(data["profils"], dict):
             data["profils"] = {}
+        if not isinstance(data["copies"], dict):
+            data["copies"] = {}
         self.data = data
         self._sanitize_layout()
 
     async def _async_commit(self) -> None:
         """Sauvegarde puis notifie entités et cartes."""
+        await self._async_sync_copies()
         await self._store.async_save(self.data)
         self._notify()
+
+    # ------------------------------------------------------------------
+    # Copie lisible des images dans /media/bar_ia
+    # ------------------------------------------------------------------
+
+    def copies_dir(self) -> Path:
+        """Dossier des copies lisibles : <dossier média local>/bar_ia."""
+        media_dirs = self.hass.config.media_dirs or {}
+        base = media_dirs.get("local") or next(iter(media_dirs.values()), None)
+        return Path(base or self.hass.config.path("media")) / "bar_ia"
+
+    async def _async_sync_copies(self) -> None:
+        """Tient /media/bar_ia à jour : un fichier « Nom (année).jpg » par image locale.
+
+        Seuls les fichiers créés par Bar IA (listés dans data["copies"]) sont renommés
+        ou supprimés.
+        """
+        with_image = {
+            sid for sid, info in self.spirits.items()
+            if (info.get("image") or {}).get("type") == "local"
+        }
+        wanted = logic.mirror_names(self.spirits, with_image)
+        known: dict[str, dict] = self.data["copies"]
+        to_copy: dict[str, Path] = {}
+        to_remove: list[str] = []
+        new_known: dict[str, dict] = {}
+        for sid, fname in wanted.items():
+            version = self.spirits[sid]["image"].get("v", 0)
+            prev = known.get(sid)
+            if prev and prev.get("fichier") != fname:
+                to_remove.append(prev["fichier"])
+            if not prev or prev.get("fichier") != fname or prev.get("v") != version:
+                to_copy[fname] = self.images.path(sid)
+            new_known[sid] = {"fichier": fname, "v": version}
+        for sid, prev in known.items():
+            if sid not in wanted and isinstance(prev, dict) and prev.get("fichier"):
+                to_remove.append(prev["fichier"])
+        if not to_copy and not to_remove and new_known == known:
+            return
+        directory = self.copies_dir()
+        keep = set(wanted.values())
+
+        def _apply() -> set[str]:
+            failed: set[str] = set()
+            directory.mkdir(parents=True, exist_ok=True)
+            for fname in to_remove:
+                if fname not in keep and "/" not in fname and "\\" not in fname:
+                    (directory / fname).unlink(missing_ok=True)
+            for fname, src in to_copy.items():
+                try:
+                    shutil.copyfile(src, directory / fname)
+                except OSError:
+                    failed.add(fname)
+            return failed
+
+        try:
+            failed = await self.hass.async_add_executor_job(_apply)
+        except OSError as err:
+            _LOGGER.warning("Copie des images dans %s impossible : %s", directory, err)
+            return
+        self.data["copies"] = {
+            sid: info for sid, info in new_known.items() if info["fichier"] not in failed
+        }
+
+    async def async_localize_links(self) -> dict:
+        """Télécharge les images encore enregistrées comme simple lien (versions 2.4/2.5)."""
+        result = {"converties": 0, "echecs": 0}
+        for sid, info in list(self.spirits.items()):
+            image = info.get("image") or {}
+            if image.get("type") != "url":
+                continue
+            try:
+                jpeg = await image_finder.download(self.hass, str(image.get("url", "")))
+            except ImageError as err:
+                _LOGGER.warning("Image de %s non récupérable (%s) : lien conservé", logic.build_label(info), err)
+                result["echecs"] += 1
+                continue
+            if sid in self.spirits:
+                self.spirits[sid]["image"] = await self._async_store_found(sid, (jpeg, image["url"]))
+                result["converties"] += 1
+        await self._async_commit()
+        return result
 
     @callback
     def _notify(self) -> None:
@@ -158,6 +245,7 @@ class BarManager:
                     "prix": logic.price(info),
                     "fiche": info,
                     "image": self._image_view(sid, info.get("image")),
+                    "copie": (self.data["copies"].get(sid) or {}).get("fichier"),
                 }
             )
         spirits.sort(key=lambda s: s["label"].lower())

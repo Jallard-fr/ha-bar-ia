@@ -315,6 +315,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: BarConfigEntry) -> bool:
     # Déclare la carte comme ressource du tableau de bord (comme le ferait HACS).
     async def _register_card(_hass: HomeAssistant) -> None:
         await async_register_card_resource(hass)
+        # Anciennes images « lien » -> copies locales ; puis copies lisibles dans /media/bar_ia.
+        result = await manager.async_localize_links()
+        if result["converties"] or result["echecs"]:
+            _LOGGER.info("Images converties en local : %s (échecs : %s)", result["converties"], result["echecs"])
 
     entry.async_on_unload(async_at_started(hass, _register_card))
     entry.async_on_unload(entry.add_update_listener(_async_reload))

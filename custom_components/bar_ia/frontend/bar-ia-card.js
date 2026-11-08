@@ -7,7 +7,7 @@
  * avant insertion dans le DOM.
  */
 (() => {
-  const VERSION = "2.6.0";
+  const VERSION = "2.7.0";
   if (customElements.get("bar-ia-card")) return;
 
   const esc = (v) =>
@@ -119,6 +119,7 @@
       return `<div class="imgblock">
           ${has ? this._imgTag(s.image, "big") : ""}
           ${has && s.image.source ? `<div class="sub center">Source : ${esc(this._host(s.image.source))}</div>` : ""}
+          ${s.copie ? `<div class="sub center">📁 Copie : media/bar_ia/${esc(s.copie)}</div>` : ""}
           <div class="actions">
             <button data-act="find-image" data-sid="${esc(s.id)}" ${this._data?.status === "en_cours" || this._data?.job ? "disabled" : ""}>🔎 Chercher une image (IA)</button>
             <label class="btn">📷 ${has ? "Changer la photo" : "Ajouter une photo"}<input type="file" accept="image/*" data-upload="${esc(s.id)}" hidden></label>

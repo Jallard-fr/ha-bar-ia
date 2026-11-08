@@ -1031,3 +1031,35 @@ def image_matches(data: dict, threshold: int = 50) -> bool:
     if isinstance(ok, str):
         ok = ok.strip().lower() in ("true", "oui", "yes", "1")
     return bool(ok) and parse_number(data.get("confiance"), 0) >= threshold
+
+
+# ---------------------------------------------------------------------------
+# Copie lisible des images (/media/bar_ia)
+# ---------------------------------------------------------------------------
+
+_FORBIDDEN_FILE_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+
+
+def readable_filename(info: dict) -> str:
+    """Nom de fichier lisible et sûr (sans extension) : « Nom (année) »."""
+    nom = clean_text(val(info.get("nom"), ""), 120) or "Sans nom"
+    annee = val(info.get("annee"), "")
+    base = nom if is_empty(annee) else f"{nom} ({clean_text(annee, 20)})"
+    base = _FORBIDDEN_FILE_CHARS.sub(" ", base)
+    base = re.sub(r"\s+", " ", base).strip(" .")
+    return (base or "Sans nom")[:100]
+
+
+def mirror_names(spirits: dict, with_image: set[str]) -> dict[str, str]:
+    """Nom de fichier unique (« … #2 » en cas de doublon) pour chaque bouteille avec image."""
+    names: dict[str, str] = {}
+    used: set[str] = set()
+    for sid in sorted(with_image, key=lambda s: (readable_filename(spirits[s]).lower(), s)):
+        base = readable_filename(spirits[sid])
+        name, n = base, 1
+        while name.lower() in used:
+            n += 1
+            name = f"{base} #{n}"
+        used.add(name.lower())
+        names[sid] = f"{name}.jpg"
+    return names

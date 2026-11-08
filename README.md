@@ -133,6 +133,7 @@ Pour relancer l'import manuellement : action `bar_ia.import_legacy` avec `force:
 ## 🔐 Sécurité
 
 - Aucun jeton : l'intégration s'exécute dans Home Assistant et n'appelle pas son API REST.
+- **Stockage local des images** : toutes les images (photos, images collées depuis Google Images, images trouvées automatiquement) sont enregistrées dans `/config/bar_ia/images` (incluses dans les sauvegardes HA). Une **copie lisible** est tenue à jour dans `/media/bar_ia/` (« Nom (année).jpg »), visible dans le Navigateur multimédia et via Samba ; Bar IA ne modifie que les fichiers qu'il y a créés. Les anciennes images « lien » (versions 2.4/2.5) sont téléchargées automatiquement au démarrage.
 - Les photos sont réduites dans le navigateur, contrôlées (JPEG, 2 Mo maximum) et stockées dans `/config/bar_ia/images`. Elles ne sont servies qu'aux utilisateurs connectés (chemins signés). Les images web doivent être en `https://`.
 - Les données du bar ne sont visibles que par les utilisateurs authentifiés (WebSocket HA). Aucun fichier public n'est généré dans `www/`.
 - Les saisies sont validées (longueur, format des cases `E1-1`, bornes numériques).
