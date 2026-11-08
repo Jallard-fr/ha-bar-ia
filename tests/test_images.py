@@ -3,11 +3,13 @@
 import base64
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 
+from custom_components.bar_ia import image_finder
 from custom_components.bar_ia.images import ImageError, decode_jpeg, valid_name, valid_url
 
 from .test_init import FICHE, _setup, _svc
@@ -68,12 +70,17 @@ async def test_upload_serve_url_and_delete(
     assert (await client.get("/api/bar_ia/image/..%2Fsecret.jpg")).status in (400, 404)
     assert (await client.get("/api/bar_ia/image/inconnu.jpg")).status == 404
 
-    # Lien web : https seulement ; remplace la photo locale
+    # Lien web : https seulement ; l'image est téléchargée et stockée localement
     with pytest.raises(ServiceValidationError):
         await _svc(hass, "set_image_url", {"spirit_id": sid, "url": "http://x.fr/a.jpg"})
-    await _svc(hass, "set_image_url", {"spirit_id": sid, "url": "https://x.fr/a.jpg"})
-    assert entry.runtime_data.snapshot()["spirits"][0]["image"] == {"type": "url", "url": "https://x.fr/a.jpg"}
-    assert not file.exists()
+    with patch.object(image_finder, "download", AsyncMock(return_value=b"\xff\xd8\xffNEW")):
+        await _svc(hass, "set_image_url", {"spirit_id": sid, "url": "https://x.fr/a.jpg"})
+    img = entry.runtime_data.snapshot()["spirits"][0]["image"]
+    assert img["type"] == "local" and img["source"] == "https://x.fr/a.jpg"
+    assert file.read_bytes() == b"\xff\xd8\xffNEW"
+    with patch.object(image_finder, "download", AsyncMock(side_effect=ImageError("Le site a répondu 403"))), \
+            pytest.raises(ServiceValidationError):
+        await _svc(hass, "set_image_url", {"spirit_id": sid, "url": "https://x.fr/b.jpg"})
 
     await _svc(hass, "remove_image", {"spirit_id": sid})
     assert entry.runtime_data.snapshot()["spirits"][0]["image"] is None

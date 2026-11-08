@@ -15,7 +15,7 @@ import re
 import socket
 import unicodedata
 from dataclasses import dataclass
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 import aiohttp
 from homeassistant.core import HomeAssistant
@@ -182,28 +182,63 @@ def to_jpeg(raw: bytes, max_dim: int = OUT_MAX_DIM) -> bytes:
         raise ImageError("Image illisible") from err
 
 
-async def download(hass: HomeAssistant, url: str) -> bytes:
-    """Télécharge une image distante de façon contrôlée et la renvoie en JPEG."""
-    if not valid_url(url):
-        raise ImageError("Adresse https:// attendue")
-    host = urlparse(url).hostname or ""
-    if not host or not await _host_is_public(hass, host):
-        raise ImageError("Hôte non autorisé")
-    session = async_get_clientsession(hass)
+MAX_REDIRECTS = 3
+_REDIRECTS = (301, 302, 303, 307, 308)
+_DATA_URI = re.compile(r"^data:image/(?:jpeg|jpg|png|webp|gif);base64,", re.IGNORECASE)
+
+
+def from_data_uri(uri: str) -> bytes:
+    """Image collée sous forme data:image/...;base64 (vignettes Google Images)."""
+    import base64  # noqa: PLC0415
+    import binascii  # noqa: PLC0415
+
+    if not _DATA_URI.match(uri or ""):
+        raise ImageError("Format d'image non pris en charge")
+    payload = uri.split(",", 1)[1]
+    if len(payload) > MAX_DOWNLOAD * 4 // 3 + 8:
+        raise ImageError("Image trop volumineuse")
     try:
-        async with session.get(
-            url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, allow_redirects=False
-        ) as resp:
-            if resp.status != 200:
-                raise ImageError(f"Réponse {resp.status}")
-            if not resp.headers.get("Content-Type", "").lower().startswith("image/"):
-                raise ImageError("Ce n'est pas une image")
-            chunks, size = [], 0
-            async for chunk in resp.content.iter_chunked(65536):
-                size += len(chunk)
-                if size > MAX_DOWNLOAD:
-                    raise ImageError("Image trop volumineuse")
-                chunks.append(chunk)
-    except (aiohttp.ClientError, TimeoutError) as err:
-        raise ImageError("Téléchargement impossible") from err
-    return await hass.async_add_executor_job(to_jpeg, b"".join(chunks))
+        return base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as err:
+        raise ImageError("Encodage de l'image invalide") from err
+
+
+async def download(hass: HomeAssistant, url: str) -> bytes:
+    """Télécharge une image distante (ou décode une image data:) et la renvoie en JPEG.
+
+    Les redirections sont suivies manuellement (3 au plus) : chaque étape doit rester
+    en https vers un hôte public.
+    """
+    url = (url or "").strip()
+    if url.lower().startswith("data:"):
+        return await hass.async_add_executor_job(to_jpeg, from_data_uri(url))
+    session = async_get_clientsession(hass)
+    for _ in range(MAX_REDIRECTS + 1):
+        if not valid_url(url):
+            raise ImageError("Adresse https:// attendue")
+        host = urlparse(url).hostname or ""
+        if not host or not await _host_is_public(hass, host):
+            raise ImageError("Hôte non autorisé")
+        try:
+            async with session.get(
+                url, headers={"User-Agent": USER_AGENT, "Accept": "image/*"}, timeout=TIMEOUT,
+                allow_redirects=False,
+            ) as resp:
+                if resp.status in _REDIRECTS and resp.headers.get("Location"):
+                    url = urljoin(url, resp.headers["Location"])
+                    continue
+                if resp.status != 200:
+                    raise ImageError(f"Le site a répondu {resp.status}")
+                ctype = resp.headers.get("Content-Type", "").lower()
+                if ctype and not ctype.startswith(("image/", "application/octet-stream", "binary/")):
+                    raise ImageError("Cette adresse ne mène pas à une image (copiez l'adresse de l'image, pas de la page)")
+                chunks, size = [], 0
+                async for chunk in resp.content.iter_chunked(65536):
+                    size += len(chunk)
+                    if size > MAX_DOWNLOAD:
+                        raise ImageError("Image trop volumineuse")
+                    chunks.append(chunk)
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise ImageError("Téléchargement impossible") from err
+        return await hass.async_add_executor_job(to_jpeg, b"".join(chunks))
+    raise ImageError("Trop de redirections")

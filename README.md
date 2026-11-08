@@ -78,16 +78,20 @@ C'est tout : aucune ressource à déclarer, aucun fichier à copier.
 | Onglet | Fonction |
 | :--- | :--- |
 | 🔍 **Recherche** | **📷 Rechercher par photo** : photographiez l'étiquette, l'IA identifie la bouteille et la photo devient son image. Ou saisissez nom, type et **pays d'origine** : l'IA trouve aussi **automatiquement l'image** de la bouteille (optionnel, aide l'IA à trouver la bonne bouteille) → fiche générée par l'IA (origine, distillerie, ABV, prix, profil aromatique, corps cocktail, cocktails conseillés). Cochez **Bouteille maison** pour calculer sans IA l'ABV, le volume, le coût, le prix conseillé et la marge. Puis **Ajouter au bar**. |
-| 🥃 **Mon bar** | Stock (+1 / −1), fiche détaillée, suppression, valorisation totale, maison/industriel, répartition par type. Vignette de chaque bouteille et bouton **🔎 Trouver les images manquantes** pour les bouteilles existantes. Pour chaque bouteille : **image** (🔎 recherche automatique par l'IA, photo prise avec l'appareil ou la galerie, ou adresse web https), **✏️ modification des informations** (prix, origine, distillerie, ABV…) et **dégustations datées** notées sur 10 (Nez, Bouche, Finale, Rapport qualité/prix) avec commentaire ; la note affichée est la moyenne. |
+| 🥃 **Mon bar** | Stock (+1 / −1), fiche détaillée, suppression, valorisation totale, maison/industriel, répartition par type. Vignette de chaque bouteille et bouton **🔎 Trouver les images manquantes** pour les bouteilles existantes. Pour chaque bouteille : **image** (🖼️ **Google Images** : la recherche s'ouvre pré-remplie, vous copiez l'adresse de l'image choisie et la collez avec 📋 ; 🔎 recherche automatique ; photo prise avec l'appareil ou la galerie), **✏️ modification des informations** (prix, origine, distillerie, ABV…) et **dégustations datées** notées sur 10 (Nez, Bouche, Finale, Rapport qualité/prix) avec commentaire ; la note affichée est la moyenne. |
 | 🗺️ **Plan** | Grille étagères × colonnes. Choisissez une bouteille puis cliquez une case pour la ranger. Remplissage automatique, vidage, changement de dimensions. |
 | 🍸 **Barman** | Cocktail proposé selon une bouteille, le type d'alcool, vos ingrédients et l'occasion. |
 | 📈 **Conseils** | **Mes dégustations** : classement par type et **synthèse IA de vos goûts** (ce que vous aimez, styles et origines préférés, pistes d'achat). **Analyse stratégique** du bar (score, forces, manques, achats recommandés) et **vérification d'une opportunité d'achat** (verdict, adéquation à vos goûts d'après vos dégustations et votre profil, doublons, cocktails débloqués, respect du budget). |
 
-### Recherche automatique d'images
+### Images via Google Images
+
+Google ne propose plus d'API d'images ouverte aux nouveaux utilisateurs (Custom Search JSON API fermée en 2026, arrêtée le 1er janvier 2027). Bar IA ouvre donc Google Images avec la bonne recherche ; vous choisissez l'image, copiez son adresse (appui long › « Copier l'adresse de l'image ») et la collez dans la fiche. L'image est **téléchargée et stockée dans Home Assistant** (adresses https ou images `data:` copiées depuis les vignettes) : elle ne dépend plus du site d'origine.
+
+### Recherche automatique d'images (en complément)
 
 1. **Candidats** : [Open Food Facts](https://world.openfoodfacts.org) (base produits libre), [Wikimedia Commons](https://commons.wikimedia.org), puis adresses proposées par l'IA.
 2. **Téléchargement contrôlé** : https uniquement, hôtes du réseau local refusés, 6 Mo maximum, conversion en JPEG 800 px.
-3. **Vérification visuelle** : l'IA regarde chaque image et ne garde que celle qui montre la bonne bouteille. La source est affichée sous l'image.
+3. **Vérification visuelle** (tolérante : même marque et même gamme suffisent) : 3 images au plus par bouteille. La source est affichée sous l'image.
 
 Chaque bouteille demande 1 à 6 appels à l'IA. Le traitement des bouteilles existantes se fait une par une (pause de 2 s) et peut être arrêté à tout moment. Les bouteilles maison et celles qui ont déjà une image ne sont pas modifiées.
 

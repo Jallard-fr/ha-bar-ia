@@ -1008,13 +1008,14 @@ def prompt_image_urls(q: dict) -> str:
 
 
 def prompt_verify_image(q: dict) -> str:
-    """Prompt : l'image jointe montre-t-elle bien cette bouteille ?"""
+    """Prompt : l'image jointe montre-t-elle bien cette bouteille ? (vérification tolérante)"""
     return "\n\n".join(
         [
-            "Une IMAGE est jointe. Vérifie si elle montre la bouteille décrite dans les DONNÉES "
-            "(même marque et même produit ; l'âge ou le millésime peut différer légèrement). "
-            "Une image sans bouteille, un logo seul, une autre marque ou un autre produit ne "
-            "correspond pas.",
+            "Une IMAGE est jointe. Indique si elle montre la bouteille décrite dans les DONNÉES. "
+            "Accepte si c'est la même marque et le même produit ou la même gamme, même si l'âge, "
+            "le millésime, l'angle de vue, l'éclairage ou une ancienne version de l'étiquette "
+            "diffèrent, ou si l'étiquette n'est que partiellement lisible. Refuse seulement une "
+            "image sans bouteille, un logo seul, une autre marque ou un produit clairement différent.",
             _GUARD,
             _data_block(q),
             "FORMAT:\n" '{"correspond":true,"confiance":80,"raison":""}',
@@ -1022,7 +1023,7 @@ def prompt_verify_image(q: dict) -> str:
     )
 
 
-def image_matches(data: dict, threshold: int = 60) -> bool:
+def image_matches(data: dict, threshold: int = 50) -> bool:
     """Interprète la réponse de vérification."""
     if not isinstance(data, dict):
         return False

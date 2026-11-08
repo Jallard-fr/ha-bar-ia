@@ -124,7 +124,6 @@ update_spirit:
 set_image_url:
   fields:
     spirit_id:
-      required: true
       selector:
         text:
     url:
@@ -209,6 +208,7 @@ clear_result:
             - cocktail
             - audit
             - purchase
+            - last_job
             - profil_rhum
             - profil_whisky
             - profil_gin

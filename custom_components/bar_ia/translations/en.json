@@ -286,15 +286,15 @@
     },
     "set_image_url": {
       "name": "Image from a web address",
-      "description": "Sets an https:// image for a bottle (empty address = remove).",
+      "description": "Downloads the image (https:// address or data: image copied from Google Images) and stores it in Home Assistant. Empty address = remove.",
       "fields": {
         "spirit_id": {
           "name": "Bottle",
-          "description": "Bottle identifier (spirit_…)."
+          "description": "Target bottle; omitted = current search result."
         },
         "url": {
           "name": "Image address",
-          "description": "Must start with https://."
+          "description": "https:// address of the image (not the page) or data: image."
         }
       }
     },
@@ -398,7 +398,7 @@
       "fields": {
         "resultat": {
           "name": "Result",
-          "description": "search, cocktail, audit, purchase or profil_<category>."
+          "description": "search, cocktail, audit, purchase, last_job or profil_<category>."
         }
       }
     },

@@ -7,7 +7,7 @@
  * avant insertion dans le DOM.
  */
 (() => {
-  const VERSION = "2.5.0";
+  const VERSION = "2.6.0";
   if (customElements.get("bar-ia-card")) return;
 
   const esc = (v) =>
@@ -124,11 +124,31 @@
             <label class="btn">📷 ${has ? "Changer la photo" : "Ajouter une photo"}<input type="file" accept="image/*" data-upload="${esc(s.id)}" hidden></label>
             ${has ? `<button data-act="rm-image" data-sid="${esc(s.id)}">Retirer l'image</button>` : ""}
           </div>
-          <div class="actions">
-            ${this._input(`u_${s.id}`, "…ou adresse web de l'image (https://)", { max: 2000, ph: "https://…" })}
-            <button data-act="url-image" data-sid="${esc(s.id)}">🔗 Utiliser ce lien</button>
-          </div>
+          ${this._renderLinkTools(s.id, s.fiche)}
         </div>`;
+    }
+
+    // Requête Google Images à partir de la fiche (marque + nom + année + « bouteille »).
+    _googleQuery(fiche) {
+      const parts = [];
+      for (const k of ["marque_distillerie", "nom", "annee"]) {
+        const v = String(val(fiche?.[k]) ?? "").trim();
+        if (!v || v === "-") continue;
+        for (const w of v.split(/\s+/)) if (!parts.some((p) => p.toLowerCase() === w.toLowerCase())) parts.push(w);
+      }
+      return [...parts, "bouteille"].join(" ");
+    }
+
+    // Outils « Google Images + coller l'adresse » ; target = id bouteille ou "_search".
+    _renderLinkTools(target, fiche) {
+      const q = this._googleQuery(fiche);
+      return `<div class="actions">
+            <button data-act="google" data-q="${esc(q)}">🖼️ Google Images</button>
+            ${this._input(`u_${target}`, "Adresse de l'image choisie", { max: 8000000, ph: "https://… ou data:image/…" })}
+            <button data-act="paste" data-target="${esc(target)}" title="Coller depuis le presse-papiers">📋 Coller</button>
+            <button data-act="url-image" data-sid="${esc(target)}">✔️ Utiliser</button>
+          </div>
+          <div class="sub">Dans Google Images, ouvrez l'image puis appui long (ou clic droit) › « Copier l'adresse de l'image », revenez ici et touchez 📋 Coller puis ✔️ Utiliser. L'image est enregistrée dans Home Assistant.</div>`;
     }
 
     setConfig(config) {
@@ -338,7 +358,7 @@
           ${maison ? "" : `<label class="btn primary ${d.status === "en_cours" ? "off" : ""}">📷 Rechercher par photo<input type="file" accept="image/*" data-photosearch hidden ${d.status === "en_cours" ? "disabled" : ""}></label>`}
         </div>
         ${maison ? "" : `<div class="sub">Photographiez l'étiquette : l'IA identifie la bouteille. Les champs ci-dessus servent alors d'indices facultatifs.</div>`}
-        ${s ? `${s.image ? this._imgTag(s.image, "big") : ""}${s.image?.source ? `<div class="sub center">Source : ${esc(this._host(s.image.source))}</div>` : ""}${this._renderFiche(s.fiche, s.maison)}
+        ${s ? `${s.image ? this._imgTag(s.image, "big") : ""}${s.image?.source ? `<div class="sub center">Source : ${esc(this._host(s.image.source))}</div>` : ""}${maison ? "" : `<details class="imgtools" ${s.image ? "" : "open"}><summary>🖼️ ${s.image ? "Changer l'image" : "Choisir une image"}</summary>${this._renderLinkTools("_search", s.fiche)}</details>`}${this._renderFiche(s.fiche, s.maison)}
           <div class="actions">
             ${this._input("quantite", "Quantité", { type: "number", min: 1 })}
             <button class="primary" data-act="add">➕ Ajouter au bar</button>
@@ -375,6 +395,11 @@
           <div><span>🏭 Industriel</span><b>${esc(st.bouteilles_industrielles)} · ${esc(fmtEur(st.valeur_industrielle))}</b></div>
         </div>
         <div class="chips">${cats}</div>
+        ${d.last_job && !d.job ? `<div class="warn">🔎 Recherche d'images : ${esc(d.last_job.trouvees)} trouvée(s) sur ${esc(d.last_job.total)}${
+          d.last_job.sans_candidat ? ` · ${esc(d.last_job.sans_candidat)} sans aucune image dans les bases gratuites` : ""}${
+          d.last_job.refusees ? ` · ${esc(d.last_job.refusees)} dont les images ont été jugées non conformes par l'IA` : ""}.
+          ${d.last_job.trouvees < d.last_job.total ? "Pour les autres, ouvrez la bouteille et utilisez 🖼️ Google Images." : ""}
+          <button class="stop" data-act="clear" data-kind="last_job">OK</button></div>` : ""}
         ${d.spirits.some((s) => !s.image && !s.maison) ? `<div class="actions"><button data-act="find-missing" ${d.status === "en_cours" || d.job ? "disabled" : ""}>🔎 Trouver les images manquantes (${esc(d.spirits.filter((s) => !s.image && !s.maison).length)})</button></div>` : ""}
         <div class="list">${list}</div>`;
     }
@@ -717,10 +742,31 @@
         case "rm-image":
           if (confirm("Retirer l'image de cette bouteille ?")) return this._call("remove_image", { spirit_id: ds.sid });
           return;
+        case "google": {
+          window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(ds.q)}`, "_blank", "noopener,noreferrer");
+          return;
+        }
+        case "paste": {
+          if (!navigator.clipboard?.readText) {
+            this._error = "Collage automatique indisponible : appui long dans le champ puis « Coller ».";
+            return this._render();
+          }
+          return navigator.clipboard.readText().then((txt) => {
+            this._form[`u_${ds.target}`] = (txt || "").trim();
+            this._render();
+          }).catch(() => {
+            this._error = "Accès au presse-papiers refusé : appui long dans le champ puis « Coller ».";
+            this._render();
+          });
+        }
         case "url-image": {
           const url = this._txt(`u_${ds.sid}`);
-          if (!/^https:\/\/\S+$/i.test(url)) { this._error = "Collez une adresse commençant par https://"; return this._render(); }
-          return this._call("set_image_url", { spirit_id: ds.sid, url }).then(() => {
+          if (!/^(https:\/\/\S+|data:image\/[a-z]+;base64,\S+)$/i.test(url)) {
+            this._error = "Collez l'adresse de l'image (https://… ou data:image/…).";
+            return this._render();
+          }
+          const data = ds.sid === "_search" ? { url } : { spirit_id: ds.sid, url };
+          return this._call("set_image_url", data).then(() => {
             if (!this._error) delete this._form[`u_${ds.sid}`];
             this._render();
           });
@@ -843,6 +889,7 @@
     ul, ol { margin:0; padding-left:20px; }
     details { margin-top:8px; }
     .center { text-align:center; }
+    details.imgtools { margin:6px 0; }
     button.stop { margin-left:auto; padding:2px 10px; }
     .thumb { width:44px; height:44px; border-radius:6px; object-fit:contain; background: var(--secondary-background-color, #f2f2f2); flex-shrink:0; }
     .thumb.ph { display:flex; align-items:center; justify-content:center; font-size:20px; opacity:.5; }
