@@ -7,7 +7,7 @@
  * avant insertion dans le DOM.
  */
 (() => {
-  const VERSION = "2.2.0";
+  const VERSION = "2.3.0";
   if (customElements.get("bar-ia-card")) return;
 
   const esc = (v) =>
@@ -66,14 +66,21 @@
 
     setConfig(config) {
       this._config = config || {};
-      if (!this._tab) {
-        try {
-          this._tab = localStorage.getItem("bar-ia-tab") || this._config.default_tab || "recherche";
-        } catch (_e) {
-          this._tab = this._config.default_tab || "recherche";
-        }
+      const visible = this._visibleTabs();
+      if (!this._tab || !visible.includes(this._tab)) {
+        let saved = null;
+        try { saved = localStorage.getItem("bar-ia-tab"); } catch (_e) { /* ignoré */ }
+        const wanted = [saved, this._config.default_tab].find((t) => t && visible.includes(t));
+        this._tab = wanted || visible[0];
       }
       this._render();
+    }
+
+    // Onglets affichés : tous sauf ceux de hidden_tabs (au moins un reste visible).
+    _visibleTabs() {
+      const hidden = Array.isArray(this._config?.hidden_tabs) ? this._config.hidden_tabs : [];
+      const visible = TABS.map(([k]) => k).filter((k) => !hidden.includes(k));
+      return visible.length ? visible : [TABS[0][0]];
     }
 
     set hass(hass) {
@@ -99,6 +106,20 @@
 
     static getStubConfig() {
       return {};
+    }
+
+    static getConfigElement() {
+      return document.createElement("bar-ia-card-editor");
+    }
+
+    // Vue « sections » : la carte prend toute la largeur de sa section.
+    getGridOptions() {
+      return { columns: "full", min_columns: 6, rows: "auto" };
+    }
+
+    // Anciennes versions de HA
+    getLayoutOptions() {
+      return { grid_columns: "full", grid_rows: "auto" };
     }
 
     _subscribe() {
@@ -171,7 +192,7 @@
             <div class="title">${esc(this._config?.title ?? "🥃 Bar IA")}</div>
             ${d ? `<div class="kpi"><b>${esc(d.stats.bouteilles)}</b> btl · <b>${esc(fmtEur(d.stats.valeur))}</b></div>` : ""}
           </div>
-          <nav>${TABS.map(([k, l]) => `<button class="tab ${k === this._tab ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</nav>
+          <nav>${TABS.filter(([k]) => this._visibleTabs().includes(k)).map(([k, l]) => `<button class="tab ${k === this._tab ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</nav>
           ${status}
           ${this._error && d ? `<div class="err">${esc(this._error)}</div>` : ""}
           <div class="body ${this._busy ? "busy" : ""}">${body}</div>
@@ -631,7 +652,7 @@
 
   const STYLE = `
     :host { display:block; }
-    ha-card { padding: 12px 16px 16px; }
+    ha-card { padding: 12px 16px 16px; height: 100%; box-sizing: border-box; }
     .head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
     .title { font-size: 1.3em; font-weight: 600; }
     .kpi { color: var(--secondary-text-color, #727272); }
@@ -691,6 +712,75 @@
     summary { cursor:pointer; color:var(--secondary-text-color, #727272); }
   `;
 
+  // ------------------------------------------------------- éditeur visuel
+  class BarIACardEditor extends HTMLElement {
+    setConfig(config) {
+      this._config = { ...(config || {}) };
+      this._render();
+    }
+
+    set hass(_hass) { /* inutile pour l'éditeur */ }
+
+    _emit(config) {
+      this._config = config;
+      this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
+    }
+
+    _render() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      const c = this._config || {};
+      const hidden = Array.isArray(c.hidden_tabs) ? c.hidden_tabs : [];
+      this.shadowRoot.innerHTML = `
+        <style>
+          :host { display:block; }
+          .row { display:flex; flex-direction:column; gap:4px; margin-bottom:14px; }
+          .lbl { font-weight:500; }
+          .help { font-size:.85em; color: var(--secondary-text-color, #727272); }
+          input[type=text], select { font: inherit; padding:8px; border-radius:6px; border:1px solid var(--divider-color, #ccc); background: var(--card-background-color, #fff); color: var(--primary-text-color, #212121); }
+          .chk { display:flex; align-items:center; gap:8px; padding:2px 0; }
+        </style>
+        <div class="row">
+          <span class="lbl">Titre</span>
+          <input type="text" id="title" value="${esc(c.title ?? "")}" placeholder="🥃 Bar IA">
+        </div>
+        <div class="row">
+          <span class="lbl">Onglets affichés</span>
+          ${TABS.map(([k, l]) => `<label class="chk"><input type="checkbox" data-tab="${k}" ${hidden.includes(k) ? "" : "checked"}> ${l}</label>`).join("")}
+          <span class="help">Décochez un onglet pour le masquer. Au moins un onglet reste affiché.</span>
+        </div>
+        <div class="row">
+          <span class="lbl">Onglet affiché à l'ouverture</span>
+          <select id="default_tab">
+            <option value="">Dernier onglet utilisé</option>
+            ${TABS.filter(([k]) => !hidden.includes(k)).map(([k, l]) => `<option value="${k}" ${c.default_tab === k ? "selected" : ""}>${l}</option>`).join("")}
+          </select>
+        </div>`;
+      const R = this.shadowRoot;
+      R.getElementById("title").addEventListener("change", (e) => {
+        const cfg = { ...this._config };
+        if (e.target.value.trim()) cfg.title = e.target.value; else delete cfg.title;
+        this._emit(cfg);
+      });
+      R.querySelectorAll("[data-tab]").forEach((el) =>
+        el.addEventListener("change", () => {
+          const hide = [...R.querySelectorAll("[data-tab]")].filter((x) => !x.checked).map((x) => x.dataset.tab);
+          if (hide.length >= TABS.length) { el.checked = true; return; }
+          const cfg = { ...this._config };
+          if (hide.length) cfg.hidden_tabs = hide; else delete cfg.hidden_tabs;
+          if (cfg.default_tab && hide.includes(cfg.default_tab)) delete cfg.default_tab;
+          this._emit(cfg);
+          this._render();
+        })
+      );
+      R.getElementById("default_tab").addEventListener("change", (e) => {
+        const cfg = { ...this._config };
+        if (e.target.value) cfg.default_tab = e.target.value; else delete cfg.default_tab;
+        this._emit(cfg);
+      });
+    }
+  }
+
+  if (!customElements.get("bar-ia-card-editor")) customElements.define("bar-ia-card-editor", BarIACardEditor);
   customElements.define("bar-ia-card", BarIACard);
   window.customCards = window.customCards || [];
   window.customCards.push({
