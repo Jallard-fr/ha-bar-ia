@@ -1,0 +1,337 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bar IA",
+        "description": "No file to copy and no token to create: just choose the AI entity.",
+        "data": {
+          "ai_task_entity": "AI entity"
+        },
+        "data_description": {
+          "ai_task_entity": "AI Task entity to use (Google Gemini, OpenAI…). Leave empty to use the preferred entity from Settings › System › AI."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Bar IA is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bar IA",
+        "data": {
+          "ai_task_entity": "AI entity"
+        },
+        "data_description": {
+          "ai_task_entity": "AI Task entity to use (Google Gemini, OpenAI…). Leave empty to use the preferred entity from Settings › System › AI."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "bouteilles": {
+        "name": "Bottles"
+      },
+      "valeur": {
+        "name": "Bar value"
+      },
+      "bouteilles_maison": {
+        "name": "Homemade bottles"
+      },
+      "valeur_maison": {
+        "name": "Homemade value"
+      },
+      "bouteilles_industrielles": {
+        "name": "Commercial bottles"
+      },
+      "valeur_industrielle": {
+        "name": "Commercial value"
+      },
+      "plan": {
+        "name": "Bottles placed"
+      },
+      "categorie_rhum": {
+        "name": "Rums"
+      },
+      "categorie_whisky": {
+        "name": "Whiskies"
+      },
+      "categorie_gin": {
+        "name": "Gins"
+      },
+      "categorie_vodka": {
+        "name": "Vodkas"
+      },
+      "categorie_tequila_mezcal": {
+        "name": "Tequilas / Mezcals"
+      },
+      "categorie_liqueurs": {
+        "name": "Liqueurs"
+      },
+      "categorie_vin": {
+        "name": "Wines"
+      },
+      "categorie_autres": {
+        "name": "Other bottles"
+      },
+      "statut_ia": {
+        "name": "AI status",
+        "state": {
+          "inactif": "Idle",
+          "en_cours": "Running",
+          "erreur": "Error"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Bar IA is not configured."
+    },
+    "unknown_spirit": {
+      "message": "Unknown bottle: {spirit_id}"
+    },
+    "invalid_cell": {
+      "message": "Invalid cell for current layout: {cell}"
+    },
+    "no_search": {
+      "message": "No searched sheet to add."
+    },
+    "ai_busy": {
+      "message": "An AI task is already running, please wait."
+    },
+    "ai_failed": {
+      "message": "AI task failed: {error}"
+    },
+    "empty_bar": {
+      "message": "The bar is empty: add bottles before analysing."
+    }
+  },
+  "services": {
+    "search": {
+      "name": "Search a spirit",
+      "description": "Generates a bottle sheet with AI, or computes a homemade sheet without AI.",
+      "fields": {
+        "nom": {
+          "name": "Name",
+          "description": "Bottle name."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Rum, gin, whisky, liqueur…"
+        },
+        "annee": {
+          "name": "Year",
+          "description": "Vintage or age (optional)."
+        },
+        "maison": {
+          "name": "Homemade",
+          "description": "Computes the sheet without AI from homemade parameters."
+        },
+        "base_utilisee": {
+          "name": "Base spirit",
+          "description": "Base spirit (homemade)."
+        },
+        "ingredients": {
+          "name": "Ingredients",
+          "description": "Ingredients with cost, e.g. \"lemons 3 €, sugar 1.5 €\"."
+        },
+        "abv_base": {
+          "name": "Base ABV",
+          "description": "Base spirit ABV (%)."
+        },
+        "volume_base_ml": {
+          "name": "Spirit volume",
+          "description": "Base spirit volume (mL)."
+        },
+        "volume_eau_ml": {
+          "name": "Added water",
+          "description": "Water volume (mL)."
+        },
+        "sucre_g": {
+          "name": "Added sugar",
+          "description": "Sugar (g)."
+        },
+        "coef_sucre_ml_par_g": {
+          "name": "Sugar coef.",
+          "description": "Volume per gram of sugar (mL/g, default 0.62)."
+        },
+        "prix_base_litre": {
+          "name": "Base price (€/L)",
+          "description": "Base spirit price per litre."
+        },
+        "volume_bouteille_ml": {
+          "name": "Bottle volume",
+          "description": "Final bottled volume (mL). Default: computed volume."
+        }
+      }
+    },
+    "add_to_inventory": {
+      "name": "Add search to bar",
+      "description": "Adds the last searched sheet to the inventory.",
+      "fields": {
+        "quantite": {
+          "name": "Quantity",
+          "description": "Number of bottles."
+        }
+      }
+    },
+    "adjust_stock": {
+      "name": "Adjust stock",
+      "description": "Adds or removes bottles.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        },
+        "delta": {
+          "name": "Delta",
+          "description": "+1 to add, -1 to remove."
+        }
+      }
+    },
+    "set_stock": {
+      "name": "Set stock",
+      "description": "Sets the number of bottles.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        },
+        "quantite": {
+          "name": "Quantity",
+          "description": "New number of bottles."
+        }
+      }
+    },
+    "delete_spirit": {
+      "name": "Delete a bottle",
+      "description": "Removes the item and its plan cells.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        }
+      }
+    },
+    "cocktail": {
+      "name": "Bartender pairing",
+      "description": "Suggests a cocktail using AI.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Base bottle (optional)."
+        },
+        "type_alcool": {
+          "name": "Spirit type",
+          "description": "Desired type (optional)."
+        },
+        "ingredients": {
+          "name": "Available ingredients",
+          "description": "What you have at hand."
+        },
+        "occasion": {
+          "name": "Occasion / mood",
+          "description": "Context, mood, dish…"
+        }
+      }
+    },
+    "audit": {
+      "name": "Analyse bar strategy",
+      "description": "Analyses the inventory with AI: strengths, gaps, recommended purchases.",
+      "fields": {}
+    },
+    "purchase_check": {
+      "name": "Check a purchase",
+      "description": "Asks AI whether a bottle is worth buying for your bar.",
+      "fields": {
+        "nom": {
+          "name": "Name",
+          "description": "Bottle considered."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Type (optional)."
+        },
+        "prix": {
+          "name": "Offered price",
+          "description": "Price in € (optional)."
+        },
+        "budget_max": {
+          "name": "Max budget",
+          "description": "Max budget per bottle in € (optional)."
+        }
+      }
+    },
+    "clear_result": {
+      "name": "Clear a result",
+      "description": "Clears a search or AI result.",
+      "fields": {
+        "resultat": {
+          "name": "Result",
+          "description": "search, cocktail, audit or purchase."
+        }
+      }
+    },
+    "place": {
+      "name": "Place a bottle",
+      "description": "Places a bottle in a plan cell.",
+      "fields": {
+        "case": {
+          "name": "Cell",
+          "description": "Plan cell, e.g. E1-2 (shelf 1, column 2)."
+        },
+        "spirit_id": {
+          "name": "Bottle",
+          "description": "Bottle identifier (spirit_…)."
+        }
+      }
+    },
+    "clear_cell": {
+      "name": "Clear a cell",
+      "description": "Frees a plan cell.",
+      "fields": {
+        "case": {
+          "name": "Cell",
+          "description": "Plan cell, e.g. E1-2 (shelf 1, column 2)."
+        }
+      }
+    },
+    "autofill": {
+      "name": "Auto-fill",
+      "description": "Automatically places all bottles (alphabetical order).",
+      "fields": {}
+    },
+    "empty_plan": {
+      "name": "Empty plan",
+      "description": "Frees all cells.",
+      "fields": {}
+    },
+    "set_layout": {
+      "name": "Bar layout",
+      "description": "Sets the number of shelves and columns.",
+      "fields": {
+        "etageres": {
+          "name": "Shelves",
+          "description": "Number of shelves (1-30)."
+        },
+        "colonnes": {
+          "name": "Columns",
+          "description": "Number of columns (1-12)."
+        }
+      }
+    },
+    "import_legacy": {
+      "name": "Import legacy version",
+      "description": "Imports inventory from sensor.bar_supersensor and /config/bar_plan.json.",
+      "fields": {
+        "force": {
+          "name": "Force",
+          "description": "Run again even if already imported."
+        }
+      }
+    }
+  }
+}

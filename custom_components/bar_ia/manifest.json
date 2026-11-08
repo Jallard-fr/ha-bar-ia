@@ -1,0 +1,14 @@
+{
+  "domain": "bar_ia",
+  "name": "Bar IA",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["ai_task", "frontend", "http", "persistent_notification", "websocket_api"],
+  "documentation": "https://github.com/jallard-fr/ha-bar-ia",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/jallard-fr/ha-bar-ia/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "2.0.0"
+}
