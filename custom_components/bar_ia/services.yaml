@@ -134,6 +134,22 @@ set_image_url:
         text:
           type: url
 
+find_image:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+
+find_missing_images:
+  fields:
+    seulement_sans_image:
+      default: true
+      selector:
+        boolean:
+
+stop_job:
+
 remove_image:
   fields:
     spirit_id:

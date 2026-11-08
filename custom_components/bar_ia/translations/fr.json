@@ -298,6 +298,31 @@
         }
       }
     },
+    "find_image": {
+      "name": "Chercher une image",
+      "description": "L'IA cherche une image de la bouteille (Open Food Facts, Wikimedia, liens connus) et la vérifie visuellement.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        }
+      }
+    },
+    "find_missing_images": {
+      "name": "Trouver les images manquantes",
+      "description": "Lance en arrière-plan la recherche d'image pour les bouteilles existantes.",
+      "fields": {
+        "seulement_sans_image": {
+          "name": "Seulement sans image",
+          "description": "Ne touche pas aux bouteilles qui ont déjà une image."
+        }
+      }
+    },
+    "stop_job": {
+      "name": "Arrêter la recherche d'images",
+      "description": "Arrête la recherche d'images en cours.",
+      "fields": {}
+    },
     "remove_image": {
       "name": "Retirer l'image",
       "description": "Supprime l'image d'une bouteille.",

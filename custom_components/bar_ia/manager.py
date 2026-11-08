@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import uuid
@@ -15,7 +17,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from . import logic
+from . import image_finder, logic
 from .const import (
     DEFAULT_COLS,
     DEFAULT_SHELVES,
@@ -39,12 +41,16 @@ from .images import SEARCH_IMAGE, ImageError, ImageStore, valid_url
 
 _LOGGER = logging.getLogger(__name__)
 
+JOB_DELAY = 2  # secondes entre deux bouteilles (quota IA)
+
 AI_TASK_NAMES = {
     "search": "bar_ia fiche spiritueux",
     "cocktail": "bar_ia accord du barman",
     "audit": "bar_ia audit du bar",
     "purchase": "bar_ia opportunite achat",
     "profile": "bar_ia profil de degustation",
+    "verify": "bar_ia verification image",
+    "image_urls": "bar_ia recherche image",
 }
 
 
@@ -77,6 +83,10 @@ class BarManager:
         self.images = ImageStore(hass)
         self.search_photo: bytes | None = None
         self.photo_entity_id: str | None = None
+        self.job: dict[str, Any] | None = None
+        self._job_cancel = False
+        self._search_image_task: asyncio.Task | None = None
+        self._search_added_sid: str | None = None
 
     # ------------------------------------------------------------------
     # Persistance
@@ -153,6 +163,7 @@ class BarManager:
             "revision": self.revision,
             "status": self.status,
             "running_task": self.running_task,
+            "job": self.job,
             "last_error": self.last_error,
             "ai_entity": self.ai_entity,
             "layout": dict(self.data["layout"]),
@@ -179,7 +190,11 @@ class BarManager:
         if image.get("type") == "url" and valid_url(str(image.get("url", ""))):
             return {"type": "url", "url": image["url"]}
         if image.get("type") == "local":
-            return {"type": "local", "path": f"/api/bar_ia/image/{name}.jpg?v={image.get('v', 0)}"}
+            return {
+                "type": "local",
+                "path": f"/api/bar_ia/image/{name}.jpg?v={image.get('v', 0)}",
+                "source": image.get("source"),
+            }
         return None
 
     def _image_error(self, err: Exception) -> ServiceValidationError:
@@ -249,8 +264,14 @@ class BarManager:
         if (search.get("image") or {}).get("type") == "local" and await self.images.async_copy(
             SEARCH_IMAGE, sid
         ):
-            item["image"] = {"type": "local", "v": int(dt_util.utcnow().timestamp())}
+            item["image"] = {
+                "type": "local",
+                "v": int(dt_util.utcnow().timestamp()),
+                "source": (search.get("image") or {}).get("source"),
+            }
         self.spirits[sid] = item
+        if self._search_image_task and not self._search_image_task.done():
+            self._search_added_sid = sid
         self.data["search"] = None
         await self._async_commit()
         return sid
@@ -393,10 +414,20 @@ class BarManager:
     # IA
     # ------------------------------------------------------------------
 
-    async def _async_ai(self, task: str, instructions: str, attachments: list[dict] | None = None) -> dict:
-        """Appelle ai_task.generate_data et renvoie le JSON extrait."""
-        if self.status == STATUS_RUNNING:
+    def _check_free(self) -> None:
+        if self.status == STATUS_RUNNING or self.job:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="ai_busy")
+
+    async def _async_ai(
+        self,
+        task: str,
+        instructions: str,
+        attachments: list[dict] | None = None,
+        internal: bool = False,
+    ) -> dict:
+        """Appelle ai_task.generate_data et renvoie le JSON extrait."""
+        if not internal:
+            self._check_free()
         self.status = STATUS_RUNNING
         self.running_task = task
         self.last_error = None
@@ -418,6 +449,10 @@ class BarManager:
                 return_response=True,
             )
             result = logic.extract_json((response or {}).get("data"))
+        except asyncio.CancelledError:
+            self.status = STATUS_IDLE
+            self.running_task = None
+            raise
         except Exception as err:  # noqa: BLE001 - l'état IA doit toujours être réinitialisé
             self.status = STATUS_ERROR
             self.running_task = None
@@ -443,6 +478,12 @@ class BarManager:
         photo: bytes | None = None,
     ) -> dict:
         """Génère une fiche (IA, éventuellement depuis une photo) ou une fiche maison (sans IA)."""
+        if self._search_image_task and not self._search_image_task.done():
+            self._search_image_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._search_image_task
+        self._search_added_sid = None
+        ai_urls: list[str] = []
         nom = logic.clean_text(nom)
         typ = logic.clean_text(typ)
         annee = logic.clean_text(annee, 20)
@@ -469,6 +510,7 @@ class BarManager:
                 ]
             prompt = logic.prompt_search(nom, typ, annee, pays, photo=photo is not None)
             raw = await self._async_ai("search", prompt, attachments)
+            ai_urls = logic.image_urls(raw)
             try:
                 fiche = logic.normalize_spirit(raw)
             except ValueError as err:
@@ -491,7 +533,176 @@ class BarManager:
             "image": image,
         }
         await self._async_commit()
+        if photo is None and maison_params is None:
+            # Recherche automatique de l'image en arrière-plan.
+            self._search_image_task = self.hass.async_create_background_task(
+                self._async_search_image(self.data["search"]["date"], logic.image_query(fiche), ai_urls),
+                "bar_ia_search_image",
+            )
         return self.data["search"]
+
+    # ------------------------------------------------------------------
+    # Recherche automatique d'image
+    # ------------------------------------------------------------------
+
+    async def _async_verify(self, q: dict, jpeg: bytes) -> bool:
+        """L'IA regarde l'image (via l'entité photo) et confirme qu'il s'agit de la bouteille."""
+        if not self.photo_entity_id:
+            return False
+        self.search_photo = jpeg
+        async_dispatcher_send(self.hass, SIGNAL_PHOTO)
+        attachments = [
+            {
+                "media_content_id": f"media-source://image/{self.photo_entity_id}",
+                "media_content_type": "image/jpeg",
+            }
+        ]
+        answer = await self._async_ai("verify", logic.prompt_verify_image(q), attachments, internal=True)
+        return logic.image_matches(answer)
+
+    async def _async_find_image(self, q: dict, ai_urls: list[str] | None = None) -> tuple[bytes, str] | None:
+        """Cherche, télécharge et fait vérifier une image ; renvoie (jpeg, adresse source)."""
+        text = logic.image_search_text(q)
+        if not text:
+            return None
+        tried: set[str] = set()
+        ai_failures = 0
+
+        async def _try(cands: list[image_finder.Candidate]) -> tuple[bytes, str] | None:
+            nonlocal ai_failures
+            for cand in cands:
+                if self._job_cancel or cand.url in tried or len(tried) >= 6:
+                    continue
+                tried.add(cand.url)
+                try:
+                    jpeg = await image_finder.download(self.hass, cand.url)
+                except ImageError as err:
+                    _LOGGER.debug("Image écartée %s : %s", cand.url, err)
+                    continue
+                try:
+                    if await self._async_verify(q, jpeg):
+                        return jpeg, cand.url
+                except HomeAssistantError:
+                    ai_failures += 1
+                    if ai_failures >= 2:
+                        raise
+            return None
+
+        found = await _try(
+            [
+                *await image_finder.candidates_openfoodfacts(self.hass, text),
+                *await image_finder.candidates_commons(self.hass, text),
+                *[image_finder.Candidate(u, "ia") for u in ai_urls or []],
+            ]
+        )
+        if found or ai_urls is not None or self._job_cancel:
+            return found
+        # Aucun résultat dans les bases : on demande des adresses à l'IA.
+        try:
+            urls = logic.image_urls(await self._async_ai("image_urls", logic.prompt_image_urls(q), internal=True))
+        except HomeAssistantError:
+            return None
+        return await _try([image_finder.Candidate(u, "ia") for u in urls])
+
+    async def _async_store_found(self, name: str, found: tuple[bytes, str]) -> dict:
+        jpeg, source = found
+        await self.images.async_save(name, jpeg)
+        return {"type": "local", "v": int(dt_util.utcnow().timestamp()), "source": source}
+
+    async def _async_search_image(self, token: str, q: dict, ai_urls: list[str]) -> None:
+        """Image de la fiche recherchée (arrière-plan, après la fiche)."""
+        self.job = {"type": "image_recherche", "label": q.get("nom") or ""}
+        self._job_cancel = False
+        self._notify()
+        try:
+            found = await self._async_find_image(q, ai_urls)
+            if not found:
+                return
+            search = self.data.get("search")
+            if search and search.get("date") == token:
+                search["image"] = await self._async_store_found(SEARCH_IMAGE, found)
+            elif (sid := self._search_added_sid) and sid in self.spirits and not self.spirits[sid].get("image"):
+                self.spirits[sid]["image"] = await self._async_store_found(sid, found)
+            else:
+                return
+            await self._async_commit()
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001 - tâche de fond : ne jamais planter
+            _LOGGER.warning("Recherche d'image en échec : %s", err)
+        finally:
+            self.job = None
+            self._search_added_sid = None
+            self._notify()
+
+    async def async_find_image(self, sid: str) -> bool:
+        """Cherche une image pour une bouteille (remplace l'image actuelle si trouvée)."""
+        info = self._require_spirit(sid)
+        self._check_free()
+        self.job = {"type": "image", "label": logic.build_label(info), "total": 1, "fait": 0, "trouvees": 0}
+        self._job_cancel = False
+        self._notify()
+        try:
+            found = await self._async_find_image(logic.image_query(info))
+            if found and sid in self.spirits:
+                self.spirits[sid]["image"] = await self._async_store_found(sid, found)
+                await self._async_commit()
+            return bool(found)
+        finally:
+            self.job = None
+            self._notify()
+
+    async def async_find_missing_images(self, only_missing: bool = True) -> dict:
+        """Lance en arrière-plan la recherche d'image pour les bouteilles existantes."""
+        self._check_free()
+        targets = [
+            sid for sid, info in self.spirits.items()
+            if not logic.is_maison(info) and (not only_missing or not info.get("image"))
+        ]
+        if not targets:
+            return {"total": 0}
+        self.job = {"type": "images", "label": "", "total": len(targets), "fait": 0, "trouvees": 0}
+        self._job_cancel = False
+        self._notify()
+        self.hass.async_create_background_task(self._async_images_job(targets), "bar_ia_images")
+        return {"total": len(targets)}
+
+    async def _async_images_job(self, targets: list[str]) -> None:
+        try:
+            for sid in targets:
+                if self._job_cancel:
+                    break
+                info = self.spirits.get(sid)
+                if info is None:
+                    self.job["fait"] += 1
+                    continue
+                self.job["label"] = logic.build_label(info)
+                self._notify()
+                try:
+                    found = await self._async_find_image(logic.image_query(info))
+                except HomeAssistantError as err:
+                    self.last_error = logic.clean_text(f"Recherche d'images interrompue : {err}", 250)
+                    break
+                if found and sid in self.spirits:
+                    self.spirits[sid]["image"] = await self._async_store_found(sid, found)
+                    self.job["trouvees"] += 1
+                    await self._async_commit()
+                self.job["fait"] += 1
+                self._notify()
+                await asyncio.sleep(JOB_DELAY)  # ménage le quota de l'IA
+        except Exception as err:  # noqa: BLE001 - tâche de fond
+            _LOGGER.warning("Recherche d'images en échec : %s", err)
+        finally:
+            done = self.job or {}
+            _LOGGER.info("Images trouvées : %s / %s", done.get("trouvees"), done.get("total"))
+            self.job = None
+            self._notify()
+
+    @callback
+    def async_stop_job(self) -> None:
+        """Demande l'arrêt de la recherche d'images en cours."""
+        if self.job:
+            self._job_cancel = True
 
     async def async_cocktail(
         self, sid: str | None, type_demande: str, ingredients: str, occasion: str

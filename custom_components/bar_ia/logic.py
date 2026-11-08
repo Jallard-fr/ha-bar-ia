@@ -782,7 +782,9 @@ def prompt_search(nom: str, typ: str, annee: str, pays: str = "", photo: bool = 
             "Céréales, Minéral, Tertiaire.\n"
             "3) corps_cocktail : \"léger\", \"moyen\" ou \"puissant\" + raison courte.\n"
             "4) cocktails : 5 maximum avec ingrédients principaux.\n"
-            "5) confiance : \"faible\", \"moyenne\" ou \"élevée\".",
+            "5) confiance : \"faible\", \"moyenne\" ou \"élevée\".\n"
+            "6) images : jusqu'à 3 adresses https d'une photo produit de CETTE bouteille que tu "
+            "connais avec certitude (site officiel, caviste connu) ; sinon [].",
             "FORMAT:\n"
             '{"nom":{"valeur":"","confiance":""},"annee":{"valeur":"-","confiance":""},'
             '"type":{"valeur":"","confiance":""},"origine":{"valeur":"","confiance":""},'
@@ -791,7 +793,7 @@ def prompt_search(nom: str, typ: str, annee: str, pays: str = "", photo: bool = 
             '"prix_moyen":{"valeur":"35","sources":"","confiance":""},'
             '"profil_aromatique":{"valeur":"","confiance":""},'
             '"corps_cocktail":{"valeur":"moyen","raison":"","confiance":""},'
-            '"cocktails":{"valeur":"1) ...\\n2) ...","confiance":""}}',
+            '"cocktails":{"valeur":"1) ...\\n2) ...","confiance":""},"images":[]}',
         ]
     )
 
@@ -948,3 +950,83 @@ def parse_legacy_plan(raw: Any, spirits: dict) -> dict:
         if sid in spirits:
             plan[key] = sid
     return plan
+
+
+# ---------------------------------------------------------------------------
+# Recherche automatique d'image
+# ---------------------------------------------------------------------------
+
+
+def image_query(info: dict) -> dict:
+    """Description d'une bouteille pour la recherche et la vérification d'image."""
+    marque = clean_text(val(info.get("marque_distillerie"), ""), 80)
+    return {
+        "nom": clean_text(val(info.get("nom"), ""), 120),
+        "marque": "" if is_empty(marque) else marque,
+        "type": clean_text(val(info.get("type"), ""), 60),
+        "annee": "" if is_empty(val(info.get("annee"), "")) else clean_text(val(info.get("annee")), 20),
+    }
+
+
+def image_search_text(q: dict) -> str:
+    """Texte de recherche : marque + nom sans répétition."""
+    words: list[str] = []
+    for part in (q.get("marque", ""), q.get("nom", "")):
+        for w in part.split():
+            if w.lower() not in (x.lower() for x in words):
+                words.append(w)
+    return " ".join(words)[:150]
+
+
+def image_urls(data: Any, max_items: int = 3) -> list[str]:
+    """Adresses https valides proposées par l'IA."""
+    if isinstance(data, dict):
+        data = data.get("images")
+    if not isinstance(data, list):
+        return []
+    out = []
+    for url in data:
+        url = str(url or "").strip()
+        if re.match(r"^https://[^\s\"'<>]{4,2000}$", url, re.IGNORECASE) and url not in out:
+            out.append(url)
+    return out[:max_items]
+
+
+def prompt_image_urls(q: dict) -> str:
+    """Prompt : adresses d'images connues pour une bouteille."""
+    return "\n\n".join(
+        [
+            "Tu es un documentaliste spiritueux. Donne des adresses d'images (photo produit, "
+            "bouteille entière, fond neutre) de la bouteille décrite.",
+            _GUARD,
+            _data_block(q),
+            "RÈGLES: uniquement des adresses https que tu connais avec certitude (site officiel, "
+            "caviste connu, Wikimedia) ; 3 maximum ; n'invente pas d'adresse ; sinon [].",
+            'FORMAT:\n{"images":[]}',
+        ]
+    )
+
+
+def prompt_verify_image(q: dict) -> str:
+    """Prompt : l'image jointe montre-t-elle bien cette bouteille ?"""
+    return "\n\n".join(
+        [
+            "Une IMAGE est jointe. Vérifie si elle montre la bouteille décrite dans les DONNÉES "
+            "(même marque et même produit ; l'âge ou le millésime peut différer légèrement). "
+            "Une image sans bouteille, un logo seul, une autre marque ou un autre produit ne "
+            "correspond pas.",
+            _GUARD,
+            _data_block(q),
+            "FORMAT:\n" '{"correspond":true,"confiance":80,"raison":""}',
+        ]
+    )
+
+
+def image_matches(data: dict, threshold: int = 60) -> bool:
+    """Interprète la réponse de vérification."""
+    if not isinstance(data, dict):
+        return False
+    ok = data.get("correspond")
+    if isinstance(ok, str):
+        ok = ok.strip().lower() in ("true", "oui", "yes", "1")
+    return bool(ok) and parse_number(data.get("confiance"), 0) >= threshold

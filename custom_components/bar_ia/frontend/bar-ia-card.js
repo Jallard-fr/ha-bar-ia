@@ -7,7 +7,7 @@
  * avant insertion dans le DOM.
  */
 (() => {
-  const VERSION = "2.4.0";
+  const VERSION = "2.5.0";
   if (customElements.get("bar-ia-card")) return;
 
   const esc = (v) =>
@@ -110,11 +110,17 @@
         : `<div class="${cls} ph">🍾</div>`;
     }
 
+    _host(url) {
+      try { return new URL(url).hostname; } catch (_e) { return url === "ia" ? "IA" : String(url || ""); }
+    }
+
     _renderImageBlock(s) {
       const has = !!s.image;
       return `<div class="imgblock">
           ${has ? this._imgTag(s.image, "big") : ""}
+          ${has && s.image.source ? `<div class="sub center">Source : ${esc(this._host(s.image.source))}</div>` : ""}
           <div class="actions">
+            <button data-act="find-image" data-sid="${esc(s.id)}" ${this._data?.status === "en_cours" || this._data?.job ? "disabled" : ""}>🔎 Chercher une image (IA)</button>
             <label class="btn">📷 ${has ? "Changer la photo" : "Ajouter une photo"}<input type="file" accept="image/*" data-upload="${esc(s.id)}" hidden></label>
             ${has ? `<button data-act="rm-image" data-sid="${esc(s.id)}">Retirer l'image</button>` : ""}
           </div>
@@ -238,6 +244,13 @@
         }[this._tab]?.() ?? "";
       }
 
+      const job = d?.job;
+      const jobBar = !job ? "" : `<div class="status run"><span class="spin"></span>${
+        job.type === "images"
+          ? `Recherche d'images : ${esc(job.fait)}/${esc(job.total)} (trouvées : ${esc(job.trouvees)})${job.label ? " · " + esc(job.label) : ""}`
+          : job.type === "image_recherche" ? `Recherche d'une image pour ${esc(job.label || "la fiche")}…`
+          : `Recherche d'une image pour ${esc(job.label)}…`
+        }${job.type === "images" ? `<button class="stop" data-act="stop-job">Arrêter</button>` : ""}</div>`;
       const status = !d
         ? ""
         : running
@@ -255,6 +268,7 @@
           </div>
           <nav>${TABS.filter(([k]) => this._visibleTabs().includes(k)).map(([k, l]) => `<button class="tab ${k === this._tab ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</nav>
           ${status}
+          ${jobBar}
           ${this._error && d ? `<div class="err">${esc(this._error)}</div>` : ""}
           <div class="body ${this._busy ? "busy" : ""}">${body}</div>
         </ha-card>`;
@@ -324,7 +338,7 @@
           ${maison ? "" : `<label class="btn primary ${d.status === "en_cours" ? "off" : ""}">📷 Rechercher par photo<input type="file" accept="image/*" data-photosearch hidden ${d.status === "en_cours" ? "disabled" : ""}></label>`}
         </div>
         ${maison ? "" : `<div class="sub">Photographiez l'étiquette : l'IA identifie la bouteille. Les champs ci-dessus servent alors d'indices facultatifs.</div>`}
-        ${s ? `${s.image ? this._imgTag(s.image, "big") : ""}${this._renderFiche(s.fiche, s.maison)}
+        ${s ? `${s.image ? this._imgTag(s.image, "big") : ""}${s.image?.source ? `<div class="sub center">Source : ${esc(this._host(s.image.source))}</div>` : ""}${this._renderFiche(s.fiche, s.maison)}
           <div class="actions">
             ${this._input("quantite", "Quantité", { type: "number", min: 1 })}
             <button class="primary" data-act="add">➕ Ajouter au bar</button>
@@ -361,6 +375,7 @@
           <div><span>🏭 Industriel</span><b>${esc(st.bouteilles_industrielles)} · ${esc(fmtEur(st.valeur_industrielle))}</b></div>
         </div>
         <div class="chips">${cats}</div>
+        ${d.spirits.some((s) => !s.image && !s.maison) ? `<div class="actions"><button data-act="find-missing" ${d.status === "en_cours" || d.job ? "disabled" : ""}>🔎 Trouver les images manquantes (${esc(d.spirits.filter((s) => !s.image && !s.maison).length)})</button></div>` : ""}
         <div class="list">${list}</div>`;
     }
 
@@ -689,6 +704,16 @@
         }
         case "audit":
           return this._call("audit");
+        case "find-image":
+          return this._call("find_image", { spirit_id: ds.sid });
+        case "find-missing": {
+          const n = this._data.spirits.filter((s) => !s.image && !s.maison).length;
+          if (confirm(`Chercher une image pour ${n} bouteille(s) sans image ? Chaque bouteille demande quelques appels à l'IA ; vous pourrez arrêter à tout moment.`))
+            return this._call("find_missing_images", { seulement_sans_image: true });
+          return;
+        }
+        case "stop-job":
+          return this._call("stop_job");
         case "rm-image":
           if (confirm("Retirer l'image de cette bouteille ?")) return this._call("remove_image", { spirit_id: ds.sid });
           return;
@@ -817,6 +842,8 @@
     h4 { margin:6px 0 2px; font-size:.95em; }
     ul, ol { margin:0; padding-left:20px; }
     details { margin-top:8px; }
+    .center { text-align:center; }
+    button.stop { margin-left:auto; padding:2px 10px; }
     .thumb { width:44px; height:44px; border-radius:6px; object-fit:contain; background: var(--secondary-background-color, #f2f2f2); flex-shrink:0; }
     .thumb.ph { display:flex; align-items:center; justify-content:center; font-size:20px; opacity:.5; }
     .list .row { justify-content:flex-start; }

@@ -93,6 +93,9 @@ SERVICE_SCHEMAS: dict[str, vol.Schema] = {
         {vol.Required("spirit_id"): _SPIRIT_ID, vol.Required("url"): vol.All(cv.string, vol.Length(max=2000))}
     ),
     "remove_image": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
+    "find_image": vol.Schema({vol.Required("spirit_id"): _SPIRIT_ID}),
+    "find_missing_images": vol.Schema({vol.Optional("seulement_sans_image", default=True): cv.boolean}),
+    "stop_job": vol.Schema({}),
     "set_stock": vol.Schema(
         {
             vol.Required("spirit_id"): _SPIRIT_ID,
@@ -168,6 +171,8 @@ RESPONSE_SERVICES = {
     "add_tasting",
     "taste_profile",
     "update_spirit",
+    "find_image",
+    "find_missing_images",
 }
 
 
@@ -232,6 +237,12 @@ def _register_services(hass: HomeAssistant) -> None:
                 await manager.async_set_image_url(d["spirit_id"], d["url"])
             case "remove_image":
                 await manager.async_remove_image(d["spirit_id"])
+            case "find_image":
+                result = {"trouvee": await manager.async_find_image(d["spirit_id"])}
+            case "find_missing_images":
+                result = await manager.async_find_missing_images(d["seulement_sans_image"])
+            case "stop_job":
+                manager.async_stop_job()
             case "set_stock":
                 await manager.async_set_stock(d["spirit_id"], d["quantite"])
             case "update_spirit":
