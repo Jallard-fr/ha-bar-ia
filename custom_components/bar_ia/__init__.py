@@ -43,6 +43,7 @@ from .const import (
     STATIC_URL,
     VERSION,
 )
+from .frontend_resource import async_register_card_resource
 from .manager import BarManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -233,6 +234,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: BarConfigEntry) -> bool:
     entry.runtime_data = manager
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Déclare la carte comme ressource du tableau de bord (comme le ferait HACS).
+    async def _register_card(_hass: HomeAssistant) -> None:
+        await async_register_card_resource(hass)
+
+    entry.async_on_unload(async_at_started(hass, _register_card))
     entry.async_on_unload(entry.add_update_listener(_async_reload))
 
     if not manager.data.get("migrated"):

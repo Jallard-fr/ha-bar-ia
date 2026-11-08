@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.bar_ia.const import DOMAIN
+from custom_components.bar_ia.const import DOMAIN, VERSION
 
 FICHE = {
     "nom": {"valeur": "Diplomatico Reserva Exclusiva", "confiance": "élevée"},
@@ -217,7 +217,7 @@ async def test_card_served_and_autoloaded(
     hass: HomeAssistant, ai_calls, hass_client, light_dependencies
 ) -> None:
     await _setup(hass, ai_calls)
-    light_dependencies.assert_called_once_with(hass, "/bar_ia_static/bar-ia-card.js?v=2.0.0")
+    light_dependencies.assert_called_once_with(hass, f"/bar_ia_static/bar-ia-card.js?v={VERSION}")
     client = await hass_client()
     resp = await client.get("/bar_ia_static/bar-ia-card.js")
     assert resp.status == 200
