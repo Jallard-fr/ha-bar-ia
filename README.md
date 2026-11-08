@@ -1,315 +1,138 @@
-# 🥃 Home Assistant Bar Manager (AI Powered)
+# 🥃 Bar IA pour Home Assistant
 
-Un gestionnaire de bar intelligent pour Home Assistant.
+Un gestionnaire de bar intelligent pour Home Assistant, piloté par l'IA (Google Gemini, OpenAI… via **AI Task**).
 
-Ce projet transforme votre instance Home Assistant en un véritable **assistant barman piloté par IA**.  
-Il permet d’identifier vos spiritueux, générer des fiches techniques complètes, gérer votre inventaire et proposer des cocktails intelligents.
+Identifiez vos spiritueux, générez des fiches techniques, gérez votre stock et le plan de rangement, recevez des suggestions de cocktails, une analyse de votre bar et des avis d'achat.
 
-> Projet inspiré du travail remarquable d’**Aldoushx** (Home Assistant Wine Cellar Manager).  
-> Il ne s’agit pas d’un fork, mais d’une adaptation conceptuelle dédiée aux spiritueux et aux cocktails.
+> Projet inspiré du travail d'**[Aldoushx](https://github.com/aldoushx/ha-cellier-ia/)** (Home Assistant Wine Cellar Manager).
 
 ---
 
-## ✨ Fonctionnalités
+## ✨ Nouveautés de la version 2
 
-### 🧠 Identification par IA
-À partir du nom et du type, le système interroge **Google Gemini**.
+La version 2 est une **intégration Home Assistant** qui s'installe en quelques clics :
 
-L’IA agit comme un expert en spiritueux en croisant des sources spécialisées :
-- Difford’s Guide
-- Liquor.com
-- Whisky Advocate
-- Fiches distilleries
-
----
-
-### 📋 Fiches techniques complètes
-
-**Identité**
-- Nom exact
-- Type (Rhum, Gin, Whisky…)
-- Origine
-- Distillerie
-- Année
-
-**Caractéristiques**
-- ABV
-- Volume
-- Prix moyen estimé
-
-**Analyse**
-- Profil aromatique structuré
-- Corps cocktail (léger / moyen / puissant)
-- Suggestions adaptées
-<img width="1064" height="727" alt="Capture d’écran 2026-03-03 à 06 28 24" src="https://github.com/user-attachments/assets/369851b3-ca6f-45bf-bd56-97b6cd1fbd02" />
-<img width="736" height="595" alt="Capture d’écran 2026-03-03 à 06 19 39" src="https://github.com/user-attachments/assets/34466139-75d4-411b-b958-c429005756ad" />
+| Avant (package YAML) | Maintenant (intégration) |
+| :--- | :--- |
+| Copier 8 fichiers dans `/config`, `packages/`, `python_scripts/` | Installation via HACS |
+| Modifier `configuration.yaml` | Rien à modifier |
+| Créer un jeton d'accès longue durée et le coller dans 5 scripts | **Aucun jeton** |
+| Installer `config-template-card` et `layout-card` | Carte fournie et chargée automatiquement |
+| Inventaire stocké dans l'attribut d'un capteur (risque de perte) | Stockage persistant dans `.storage` |
+| Plan HTML public sur `/local/bar_plan.html` | Plan affiché dans la carte, derrière l'authentification HA |
+| Scripts lancés via `shell_command` toutes les 10 s | Services natifs, aucune interrogation périodique |
 
 ---
 
-### 📦 Gestion intelligente du stock
+## 🛠 Prérequis
 
-- Ajout en un clic depuis la recherche
-- Boutons +1 / -1
-- Suppression simplifiée
-- Gestion intelligente des doublons (#2, #3…)
-- Distinction Maison / Industriel
-- Valorisation estimée du bar
-- Nombre total de bouteilles
-<img width="877" height="713" alt="Capture d’écran 2026-03-03 à 06 00 40" src="https://github.com/user-attachments/assets/faa261f9-dd63-4a49-bbbe-0ccea6bbcc04" />
-
-# 🚀 Modules avancés
-
-## 🏠 Mode Bouteille Maison
-
-Création de spiritueux personnalisés :
-
-- Calcul ABV estimé
-- Calcul coût réel (base + ingrédients)
-- Prix conseillé automatique
-- Calcul marge
-- Coût au litre
-<img width="316" height="709" alt="Capture d’écran 2026-03-03 à 06 01 44" src="https://github.com/user-attachments/assets/f0657089-6bdb-4179-a5fd-5d949abd1f9d" />
-
-
-## 🍸 Accord du Barman (IA)
-
-Proposition intelligente de cocktail selon :
-
-- Bouteille sélectionnée (optionnel)
-- Ingrédients disponibles
-- Occasion / envie
-
-Réponse structurée en JSON strict :
-
-- Nom du cocktail
-- Style
-- Raison
-- Ingrédients
-- Recette
-- Verre
-- Garnish
-- Niveau
-- Variantes
-<img width="1068" height="640" alt="Capture d’écran 2026-03-03 à 06 01 09" src="https://github.com/user-attachments/assets/bf9a6ed2-4b68-4a8a-9b6d-2da670da1925" />
-
-## 📈 Analyse du Stock & Cohérence
-
-Comparaison automatique entre :
-
-- Inventaire théorique
-- Plan de rangement
-- Bouteilles non placées
-- Suroccupation
-- Inconnues dans le plan
-
-## 🗺️ Visualisation & Rangement du Bar (Frontend)
-
-Interface HTML dynamique :
-
-- Visualisation graphique des bouteilles
-- Placement manuel (E1-1, E1-2…)
-- Mode automatique (Auto-fill)
-- Vidage complet
-- Synchronisation inventaire / plan
-- Génération HTML automatique
-<img width="318" height="571" alt="Capture d’écran 2026-03-03 à 06 23 03" src="https://github.com/user-attachments/assets/7470691c-a5dd-4064-b47f-2a67299f6a7d" />
-
-# 🛠 Prérequis
-
-1. **Clé API Google Gemini**
-   - À créer sur Google AI Studio
-
-2. **Intégration Google Generative AI**
-   - Intégration native Home Assistant
-   - Nom recommandé de l’action :
-     ```
-     google_ai_task
-     ```
-
-3. **system_log activé**
-
-4. **python_scripts activé** dans `configuration.yaml`
+1. **Home Assistant 2025.8 ou plus récent**.
+2. **[HACS](https://hacs.xyz/)** installé.
+3. Une intégration fournissant une entité **Tâche IA** (`ai_task.*`), par exemple :
+   - *Google Generative AI* (clé API à créer sur [Google AI Studio](https://aistudio.google.com/)) ;
+   - ou OpenAI, Anthropic, Ollama…
 
 ---
 
-# 🚀 Installation
+## 🚀 Installation
 
-### 1. Organisation des fichiers
+### 1. Ajouter le dépôt dans HACS
 
-Créez les dossiers suivants dans votre répertoire `/config/` (c'est la racine de HA dans File Editor, la ou se trouve le configuration.yaml) :
-* `/config/python_scripts/` (moteurs de calcul)
-* `/config/packages/` (configuration YAML)
+1. HACS → menu ⋮ → **Dépôts personnalisés**.
+2. URL : `https://github.com/jallard-fr/ha-bar-ia`, catégorie **Intégration**.
+3. Recherchez **Bar IA**, cliquez sur **Télécharger**, puis **redémarrez Home Assistant**.
 
-### 2. Configuration du `configuration.yaml`
+### 2. Ajouter l'intégration
 
-* Ajoutez les lignes suivantes pour activer le système et protéger votre base de données contre le gonflement inutile (l'IA est gourmande en log...) :
+**Paramètres › Appareils et services › Ajouter une intégration › Bar IA**
+
+Choisissez l'entité IA à utiliser. Si vous laissez vide, Bar IA utilise l'entité préférée définie dans *Paramètres › Système › IA*. Vous pourrez la changer plus tard via **Configurer**.
+
+### 3. Ajouter la carte
+
+Dans un tableau de bord : **Modifier › Ajouter une carte › Bar IA**, ou en YAML :
 
 ```yaml
-homeassistant:
-  packages: !include_dir_named packages
-
-# Configuration du Recorder pour protéger votre stockage
-recorder:
-  purge_keep_days: 7
-  exclude:
-    entities:
-      - sensor.bar_spiritueux_recherche # Donnée temporaire volumineuse
-      - input_text.bar_derniere_erreur_ia
-    event_types:
-      - system_log_event # Évite d'historiser les erreurs système répétitives
-
+type: custom:bar-ia-card
 ```
 
-Redémarrer Home Assistant après modification.
+Options facultatives :
 
-### 3. Installation de Config Template Card via HACS
+```yaml
+type: custom:bar-ia-card
+title: "🥃 Mon bar"
+default_tab: bar   # recherche | bar | plan | barman | conseils
+```
 
-Cette carte est nécessaire pour afficher automatiquement l’URL mise à jour du plan dans une carte iframe, sans rester bloqué sur une ancienne version en cache.
-
-Étapes
-	1.	Ouvrir HACS
-	2.	Aller dans Frontend
-	3.	Rechercher Config Template Card
-	4.	Installer Config Template Card
-	5.	Redémarrer Home Assistant
-	6.	Vider le cache du navigateur ou faire un rechargement complet de l’interface
-
-Vérification de la ressource
-Normalement, HACS ajoute la ressource automatiquement.
-Si ce n’est pas le cas, ajoutez-la manuellement dans :
-
-Paramètres > Tableaux de bord > Ressources
-
-Avec :
-``` 
-URL: /hacsfiles/config-template-card/config-template-card.js
-Type: module
-``` 
-
-### 4. Carte Lovelace pour afficher le plan dynamiquement
-
-Utilisez cette carte pour afficher le plan du bar avec une URL versionnée automatiquement :
-``` 
-type: custom:config-template-card
-entities:
-  - input_text.bar_plan_version
-card:
-  type: iframe
-  url: ${"/local/bar_plan.html?v=" + states['input_text.bar_plan_version'].state}
-  aspect_ratio: 110%
-``` 
-Cette carte lit la valeur de input_text.bar_plan_version et recharge toujours la bonne version du fichier HTML généré.
-
-### 5. Variante responsive mobile / tablette / ordinateur
-
-Si vous voulez un meilleur affichage selon l’écran, utilisez cette version :
-``` 
-type: vertical-stack
-cards:
-  - type: conditional
-    conditions:
-      - condition: screen
-        media_query: "(max-width: 767px)"
-    card:
-      type: custom:config-template-card
-      entities:
-        - input_text.bar_plan_version
-      card:
-        type: iframe
-        url: ${"/local/bar_plan.html?v=" + states['input_text.bar_plan_version'].state}
-        aspect_ratio: 185%
-
-  - type: conditional
-    conditions:
-      - condition: screen
-        media_query: "(min-width: 768px) and (max-width: 1024px)"
-    card:
-      type: custom:config-template-card
-      entities:
-        - input_text.bar_plan_version
-      card:
-        type: iframe
-        url: ${"/local/bar_plan.html?v=" + states['input_text.bar_plan_version'].state}
-        aspect_ratio: 130%
-
-  - type: conditional
-    conditions:
-      - condition: screen
-        media_query: "(min-width: 1025px)"
-    card:
-      type: custom:config-template-card
-      entities:
-        - input_text.bar_plan_version
-      card:
-        type: iframe
-        url: ${"/local/bar_plan.html?v=" + states['input_text.bar_plan_version'].state}
-        aspect_ratio: 95%
-``` 
-### 6. Emplacement des fichiers
-| Fichier | Emplacement | Rôle |
-| :--- | :--- | :--- |
-| `bar_plan.json` | `/config/` | Base de données des emplacements |
-| `generate_bar_plan.py` | `/config/` | Générateur du rendu HTML |
-| `bar_cellier_ia_ultra.yaml` | `/config/packages/` | Configuration HA (Sensors, Scripts) |
-| `analyze_bar_stock.py` | `/config/python_scripts/` | Calcul des écarts de stock |
-| `bar_ranger.py` | `/config/python_scripts/` | Script de rangement manuel |
-| `bar_autofill.py` | `/config/python_scripts/` | Script de rangement automatique |
-| `bar_empty.py` | `/config/python_scripts/` | Script de vidage complet |
-| `bar_plan.html` (généré auto) | `/config/www/` | Fichier de rendu final |
+C'est tout : aucune ressource à déclarer, aucun fichier à copier.
 
 ---
 
-### 🔐 Configuration du Token API
-Vous devez insérer un **TOKEN HA longue durée** dans la variable `TOKEN = "..."` située au début des fichiers suivants :
-* `generate_bar_plan.py`
-  
-Fichiers concernés :
-* `generate_bar_plan.py`
-* `analyze_bar_stock.py`
-* `bar_autofill.py`
-* `bar_empty.py`
+## 📖 Utilisation (onglets de la carte)
 
-Pour créer un jeton longue durée, cliquez sur votre nom en bas du menu à gauche dans HA => onglet Securité => (en bas) Jetons d'accès longue durée / créer un jeton.
+| Onglet | Fonction |
+| :--- | :--- |
+| 🔍 **Recherche** | Nom et type → fiche générée par l'IA (origine, distillerie, ABV, prix, profil aromatique, corps cocktail, cocktails conseillés). Cochez **Bouteille maison** pour calculer sans IA l'ABV, le volume, le coût, le prix conseillé et la marge. Puis **Ajouter au bar**. |
+| 🥃 **Mon bar** | Stock (+1 / −1), fiche détaillée, suppression, valorisation totale, maison/industriel, répartition par type. |
+| 🗺️ **Plan** | Grille étagères × colonnes. Choisissez une bouteille puis cliquez une case pour la ranger. Remplissage automatique, vidage, changement de dimensions. |
+| 🍸 **Barman** | Cocktail proposé selon une bouteille, le type d'alcool, vos ingrédients et l'occasion. |
+| 📈 **Conseils** | **Analyse stratégique** du bar (score, forces, manques, achats recommandés) et **vérification d'une opportunité d'achat** (verdict, doublons, cocktails débloqués, respect du budget). |
 
----
+### Entités créées
 
-## 📖 Utilisation
+Capteurs : bouteilles, valeur du bar, bouteilles et valeur maison / industrielles, nombre par type (rhum, whisky, gin, vodka, tequila/mezcal, liqueurs, vin, autres), bouteilles rangées, statut IA (`inactif` / `en_cours` / `erreur` avec la dernière erreur).
 
-1. **Recherche d’un spiritueux**  
-   Entrez le nom et le type (Rhum, Gin, Whisky, etc.) dans l’interface du dashboard, puis cliquez sur **Rechercher le spiritueux**.
+### Services (pour vos automatisations)
 
-2. **Analyse IA**  
-   Pendant que l’IA traite la demande, un indicateur visuel confirme la prise en compte.  
-   La génération de la fiche prend environ 10 secondes.
+`bar_ia.search`, `add_to_inventory`, `adjust_stock`, `set_stock`, `delete_spirit`, `cocktail`, `audit`, `purchase_check`, `clear_result`, `place`, `clear_cell`, `autofill`, `empty_plan`, `set_layout`, `import_legacy`.
 
-3. **Ajout au bar**  
-   Lorsque la fiche est générée, vérifiez les informations.  
-   Si elles correspondent à votre bouteille, cliquez sur **Ajouter au bar** pour l’intégrer à votre inventaire permanent.
+Les services IA renvoient leur résultat (`response_variable`) :
 
-4. **Gestion du stock**  
-   Utilisez la section **Gestion du bar** pour :
-   - Ajuster les quantités (+1 / -1)
-   - Supprimer une bouteille
-   - Gérer les doublons
-   - Consulter la valorisation totale
-
-5. **Accord du Barman (IA)**  
-   Renseignez :
-   - Une bouteille (optionnel)
-   - Les ingrédients disponibles
-   - L’occasion ou l’envie
-
-   Cliquez sur **Lancer la suggestion** pour obtenir un cocktail structuré (nom, recette, niveau, variantes, etc.).  
-   La réponse IA arrive généralement sous 10 à 15 secondes.
-
-6. **Rangement & Visualisation**  
-   Positionnez vos bouteilles dans le plan (manuel ou automatique), puis générez le visuel HTML pour afficher la disposition complète de votre bar.
+```yaml
+action: bar_ia.cocktail
+data:
+  occasion: "apéritif d'été"
+  ingredients: "citron vert, menthe"
+response_variable: cocktail
+```
 
 ---
 
-🙏 Remerciements
+## 🔁 Migration depuis la version 1 (package YAML)
 
-Un immense merci à [Aldoushx](https://github.com/aldoushx/ha-cellier-ia/) pour son projet
-Home Assistant Wine Cellar Manager (AI Powered).
+1. Installez Bar IA (étapes ci-dessus) **sans supprimer l'ancien package**.
+2. Au démarrage, l'intégration importe automatiquement l'inventaire de `sensor.bar_supersensor`, le plan `/config/bar_plan.json` et les dimensions (`input_number.bar_nb_etageres` et `input_number.bar_nb_colonnes`). Une notification confirme l'import.
+3. Supprimez ensuite les anciens fichiers :
+   - `packages/bar_cellier_ia_ultra.yaml`
+   - `generate_bar_plan.py`, `bar_plan.json`, `www/bar_plan.html`
+   - `python_scripts/analyze_bar_stock.py`, `bar_autofill.py`, `bar_empty.py`, `bar_ranger.py`, `bar_common.py`
+   - les exclusions `recorder` qui les concernaient.
+4. **Révoquez le jeton d'accès longue durée** utilisé par les anciens scripts : Profil › Sécurité › Jetons d'accès longue durée.
 
-Son architecture, sa structuration des packages et son approche intelligente du supersensor ont été une source d’inspiration directe pour cette adaptation dédiée aux spiritueux.
+Pour relancer l'import manuellement : action `bar_ia.import_legacy` avec `force: true`.
+
+---
+
+## 🔐 Sécurité
+
+- Aucun jeton : l'intégration s'exécute dans Home Assistant et n'appelle pas son API REST.
+- Les données du bar ne sont visibles que par les utilisateurs authentifiés (WebSocket HA). Aucun fichier public n'est généré dans `www/`.
+- Les saisies sont validées (longueur, format des cases `E1-1`, bornes numériques).
+- Le prompt envoyé à l'IA isole les saisies dans un bloc de données à ne jamais traiter comme des instructions.
+- Les réponses de l'IA sont validées : seuls les champs attendus sont conservés et ils sont tronqués.
+- La carte échappe toutes les valeurs affichées : une réponse IA contenant du HTML ne peut pas exécuter de script.
+
+---
+
+## 🧪 Développement
+
+```bash
+pip install -r requirements_test.txt
+pytest
+```
+
+---
+
+## 🙏 Remerciements
+
+Un immense merci à [Aldoushx](https://github.com/aldoushx/ha-cellier-ia/) pour Home Assistant Wine Cellar Manager (AI Powered), dont l'architecture a directement inspiré ce projet.

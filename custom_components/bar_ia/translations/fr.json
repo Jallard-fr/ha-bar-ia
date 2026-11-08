@@ -1,0 +1,337 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bar IA",
+        "description": "Aucun fichier à copier ni jeton à créer : choisissez simplement l'entité IA.",
+        "data": {
+          "ai_task_entity": "Entité IA"
+        },
+        "data_description": {
+          "ai_task_entity": "Entité « Tâche IA » à utiliser (Google Gemini, OpenAI…). Laissez vide pour utiliser l'entité préférée définie dans Paramètres › Système › IA."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Bar IA est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bar IA",
+        "data": {
+          "ai_task_entity": "Entité IA"
+        },
+        "data_description": {
+          "ai_task_entity": "Entité « Tâche IA » à utiliser (Google Gemini, OpenAI…). Laissez vide pour utiliser l'entité préférée définie dans Paramètres › Système › IA."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "bouteilles": {
+        "name": "Bouteilles"
+      },
+      "valeur": {
+        "name": "Valeur du bar"
+      },
+      "bouteilles_maison": {
+        "name": "Bouteilles maison"
+      },
+      "valeur_maison": {
+        "name": "Valeur maison"
+      },
+      "bouteilles_industrielles": {
+        "name": "Bouteilles industrielles"
+      },
+      "valeur_industrielle": {
+        "name": "Valeur industrielle"
+      },
+      "plan": {
+        "name": "Bouteilles rangées"
+      },
+      "categorie_rhum": {
+        "name": "Rhums"
+      },
+      "categorie_whisky": {
+        "name": "Whiskies"
+      },
+      "categorie_gin": {
+        "name": "Gins"
+      },
+      "categorie_vodka": {
+        "name": "Vodkas"
+      },
+      "categorie_tequila_mezcal": {
+        "name": "Tequilas / Mezcals"
+      },
+      "categorie_liqueurs": {
+        "name": "Liqueurs"
+      },
+      "categorie_vin": {
+        "name": "Vins"
+      },
+      "categorie_autres": {
+        "name": "Autres bouteilles"
+      },
+      "statut_ia": {
+        "name": "Statut IA",
+        "state": {
+          "inactif": "Inactif",
+          "en_cours": "En cours",
+          "erreur": "Erreur"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Bar IA n'est pas configuré."
+    },
+    "unknown_spirit": {
+      "message": "Bouteille inconnue : {spirit_id}"
+    },
+    "invalid_cell": {
+      "message": "Case invalide pour la disposition actuelle : {cell}"
+    },
+    "no_search": {
+      "message": "Aucune fiche recherchée à ajouter."
+    },
+    "ai_busy": {
+      "message": "Une tâche IA est déjà en cours, patientez."
+    },
+    "ai_failed": {
+      "message": "La tâche IA a échoué : {error}"
+    },
+    "empty_bar": {
+      "message": "Le bar est vide : ajoutez des bouteilles avant l'analyse."
+    }
+  },
+  "services": {
+    "search": {
+      "name": "Rechercher un spiritueux",
+      "description": "Génère la fiche d'une bouteille avec l'IA, ou calcule une fiche maison sans IA.",
+      "fields": {
+        "nom": {
+          "name": "Nom",
+          "description": "Nom de la bouteille."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Rhum, gin, whisky, liqueur…"
+        },
+        "annee": {
+          "name": "Année",
+          "description": "Millésime ou âge (optionnel)."
+        },
+        "maison": {
+          "name": "Bouteille maison",
+          "description": "Calcule la fiche sans IA à partir des paramètres maison."
+        },
+        "base_utilisee": {
+          "name": "Base utilisée",
+          "description": "Alcool de base (maison)."
+        },
+        "ingredients": {
+          "name": "Ingrédients",
+          "description": "Ingrédients avec leur coût, ex. « citrons 3 €, sucre 1,5 € »."
+        },
+        "abv_base": {
+          "name": "ABV de la base",
+          "description": "Degré de l'alcool de base (%)."
+        },
+        "volume_base_ml": {
+          "name": "Volume d'alcool",
+          "description": "Volume d'alcool de base (mL)."
+        },
+        "volume_eau_ml": {
+          "name": "Eau ajoutée",
+          "description": "Volume d'eau (mL)."
+        },
+        "sucre_g": {
+          "name": "Sucre ajouté",
+          "description": "Sucre (g)."
+        },
+        "coef_sucre_ml_par_g": {
+          "name": "Coef. sucre",
+          "description": "Volume occupé par gramme de sucre (mL/g, 0,62 par défaut)."
+        },
+        "prix_base_litre": {
+          "name": "Prix de la base (€/L)",
+          "description": "Prix au litre de l'alcool de base."
+        },
+        "volume_bouteille_ml": {
+          "name": "Volume de la bouteille",
+          "description": "Volume final mis en bouteille (mL). Par défaut : volume calculé."
+        }
+      }
+    },
+    "add_to_inventory": {
+      "name": "Ajouter la recherche au bar",
+      "description": "Ajoute la dernière fiche recherchée à l'inventaire.",
+      "fields": {
+        "quantite": {
+          "name": "Quantité",
+          "description": "Nombre de bouteilles."
+        }
+      }
+    },
+    "adjust_stock": {
+      "name": "Ajuster le stock",
+      "description": "Ajoute ou retire des bouteilles.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        },
+        "delta": {
+          "name": "Variation",
+          "description": "+1 pour ajouter, -1 pour retirer."
+        }
+      }
+    },
+    "set_stock": {
+      "name": "Définir le stock",
+      "description": "Fixe le nombre de bouteilles.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        },
+        "quantite": {
+          "name": "Quantité",
+          "description": "Nouveau nombre de bouteilles."
+        }
+      }
+    },
+    "delete_spirit": {
+      "name": "Supprimer une bouteille",
+      "description": "Supprime la référence et ses emplacements dans le plan.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        }
+      }
+    },
+    "cocktail": {
+      "name": "Accord du barman",
+      "description": "Propose un cocktail avec l'IA.",
+      "fields": {
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Bouteille de base (optionnel)."
+        },
+        "type_alcool": {
+          "name": "Type d'alcool",
+          "description": "Type souhaité (optionnel)."
+        },
+        "ingredients": {
+          "name": "Ingrédients disponibles",
+          "description": "Ce que vous avez sous la main."
+        },
+        "occasion": {
+          "name": "Occasion / envie",
+          "description": "Contexte, envie, plat…"
+        }
+      }
+    },
+    "audit": {
+      "name": "Analyser la stratégie du bar",
+      "description": "Analyse l'inventaire avec l'IA : forces, manques, achats recommandés.",
+      "fields": {}
+    },
+    "purchase_check": {
+      "name": "Vérifier une opportunité d'achat",
+      "description": "Demande à l'IA si une bouteille vaut l'achat pour votre bar.",
+      "fields": {
+        "nom": {
+          "name": "Nom",
+          "description": "Bouteille envisagée."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Type (optionnel)."
+        },
+        "prix": {
+          "name": "Prix proposé",
+          "description": "Prix en € (optionnel)."
+        },
+        "budget_max": {
+          "name": "Budget max",
+          "description": "Budget maximum par bouteille en € (optionnel)."
+        }
+      }
+    },
+    "clear_result": {
+      "name": "Effacer un résultat",
+      "description": "Efface une recherche ou un résultat IA affiché.",
+      "fields": {
+        "resultat": {
+          "name": "Résultat",
+          "description": "search, cocktail, audit ou purchase."
+        }
+      }
+    },
+    "place": {
+      "name": "Ranger une bouteille",
+      "description": "Place une bouteille dans une case du plan.",
+      "fields": {
+        "case": {
+          "name": "Case",
+          "description": "Case du plan, ex. E1-2 (étagère 1, colonne 2)."
+        },
+        "spirit_id": {
+          "name": "Bouteille",
+          "description": "Identifiant de la bouteille (spirit_…)."
+        }
+      }
+    },
+    "clear_cell": {
+      "name": "Vider une case",
+      "description": "Libère une case du plan.",
+      "fields": {
+        "case": {
+          "name": "Case",
+          "description": "Case du plan, ex. E1-2 (étagère 1, colonne 2)."
+        }
+      }
+    },
+    "autofill": {
+      "name": "Remplissage automatique",
+      "description": "Range automatiquement toutes les bouteilles (ordre alphabétique).",
+      "fields": {}
+    },
+    "empty_plan": {
+      "name": "Vider le plan",
+      "description": "Libère toutes les cases.",
+      "fields": {}
+    },
+    "set_layout": {
+      "name": "Dimensions du bar",
+      "description": "Définit le nombre d'étagères et de colonnes.",
+      "fields": {
+        "etageres": {
+          "name": "Étagères",
+          "description": "Nombre d'étagères (1-30)."
+        },
+        "colonnes": {
+          "name": "Colonnes",
+          "description": "Nombre de colonnes (1-12)."
+        }
+      }
+    },
+    "import_legacy": {
+      "name": "Importer l'ancienne version",
+      "description": "Importe l'inventaire de sensor.bar_supersensor et /config/bar_plan.json.",
+      "fields": {
+        "force": {
+          "name": "Forcer",
+          "description": "Relancer même si l'import a déjà été fait."
+        }
+      }
+    }
+  }
+}

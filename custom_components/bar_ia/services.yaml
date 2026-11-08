@@ -1,0 +1,167 @@
+search:
+  fields:
+    nom:
+      required: true
+      example: "Diplomatico Reserva Exclusiva"
+      selector:
+        text:
+    type:
+      example: "Rhum"
+      selector:
+        text:
+    annee:
+      selector:
+        text:
+    maison:
+      default: false
+      selector:
+        boolean:
+    base_utilisee:
+      selector:
+        text:
+    ingredients:
+      example: "citrons 3 €, sucre 1,5 €"
+      selector:
+        text:
+    abv_base:
+      selector:
+        number: { min: 0, max: 96, step: 0.1, unit_of_measurement: "%", mode: box }
+    volume_base_ml:
+      selector:
+        number: { min: 0, max: 20000, step: 1, unit_of_measurement: mL, mode: box }
+    volume_eau_ml:
+      selector:
+        number: { min: 0, max: 20000, step: 1, unit_of_measurement: mL, mode: box }
+    sucre_g:
+      selector:
+        number: { min: 0, max: 20000, step: 1, unit_of_measurement: g, mode: box }
+    coef_sucre_ml_par_g:
+      default: 0.62
+      selector:
+        number: { min: 0, max: 2, step: 0.01, unit_of_measurement: mL/g, mode: box }
+    prix_base_litre:
+      selector:
+        number: { min: 0, max: 1000, step: 0.1, unit_of_measurement: €/L, mode: box }
+    volume_bouteille_ml:
+      selector:
+        number: { min: 0, max: 20000, step: 1, unit_of_measurement: mL, mode: box }
+
+add_to_inventory:
+  fields:
+    quantite:
+      default: 1
+      selector:
+        number: { min: 1, max: 100, mode: box }
+
+adjust_stock:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+    delta:
+      default: 1
+      selector:
+        number: { min: -100, max: 100, mode: box }
+
+set_stock:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+    quantite:
+      required: true
+      selector:
+        number: { min: 0, max: 1000, mode: box }
+
+delete_spirit:
+  fields:
+    spirit_id:
+      required: true
+      selector:
+        text:
+
+cocktail:
+  fields:
+    spirit_id:
+      selector:
+        text:
+    type_alcool:
+      selector:
+        select:
+          options: ["Aucun", "Rhum", "Gin", "Vodka", "Whisky", "Tequila / Mezcal", "Liqueur", "Vin"]
+    ingredients:
+      selector:
+        text:
+    occasion:
+      selector:
+        text:
+
+audit:
+
+purchase_check:
+  fields:
+    nom:
+      required: true
+      selector:
+        text:
+    type:
+      selector:
+        text:
+    prix:
+      selector:
+        number: { min: 0, max: 100000, step: 0.5, unit_of_measurement: "€", mode: box }
+    budget_max:
+      selector:
+        number: { min: 0, max: 100000, step: 5, unit_of_measurement: "€", mode: box }
+
+clear_result:
+  fields:
+    resultat:
+      required: true
+      selector:
+        select:
+          options: ["search", "cocktail", "audit", "purchase"]
+
+place:
+  fields:
+    case:
+      required: true
+      example: "E1-2"
+      selector:
+        text:
+    spirit_id:
+      required: true
+      selector:
+        text:
+
+clear_cell:
+  fields:
+    case:
+      required: true
+      example: "E1-2"
+      selector:
+        text:
+
+autofill:
+
+empty_plan:
+
+set_layout:
+  fields:
+    etageres:
+      required: true
+      selector:
+        number: { min: 1, max: 30, mode: box }
+    colonnes:
+      required: true
+      selector:
+        number: { min: 1, max: 12, mode: box }
+
+import_legacy:
+  fields:
+    force:
+      default: false
+      selector:
+        boolean:
