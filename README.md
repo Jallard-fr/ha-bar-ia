@@ -4,7 +4,8 @@ Un gestionnaire de bar intelligent pour Home Assistant, piloté par l'IA (Google
 
 Identifiez vos spiritueux, générez des fiches techniques, gérez votre stock et le plan de rangement, recevez des suggestions de cocktails, une analyse de votre bar et des avis d'achat.
 
-> Projet inspiré du travail d'**[Aldoushx](https://github.com/aldoushx/ha-cellier-ia/)** (Home Assistant Wine Cellar Manager).
+> Projet d'origine créé par **[greg06500](https://github.com/greg06500)**, puis enrichi et réorganisé en intégration Home Assistant.
+> Il s'inspire du travail d'**[Aldoushx](https://github.com/aldoushx/ha-cellier-ia/)** (Home Assistant Wine Cellar Manager).
 
 ---
 
@@ -154,4 +155,6 @@ pytest
 
 ## 🙏 Remerciements
 
-Un immense merci à [Aldoushx](https://github.com/aldoushx/ha-cellier-ia/) pour Home Assistant Wine Cellar Manager (AI Powered), dont l'architecture a directement inspiré ce projet.
+Un immense merci à **[greg06500](https://github.com/greg06500)**, créateur d'origine de ce système de gestion de bar : les premières versions du package, les fiches, le plan de rangement et le rendu HTML viennent de son travail. La version 2 en est une évolution (intégration HACS, dégustations, images, recherche IA).
+
+Merci aussi à [Aldoushx](https://github.com/aldoushx/ha-cellier-ia/) pour Home Assistant Wine Cellar Manager (AI Powered), dont l'architecture a directement inspiré ce projet.
